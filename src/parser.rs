@@ -68,7 +68,7 @@ impl Parser for ParserLL {
     fn parse(&mut self, grammar: &Grammar, tokens: &Vec<String>) -> Result<(), &str> {
         // Grammar must not be LR
         if grammar.is_lr() {
-            panic!("ParserLL can't parser LR grammar");
+            panic!("ParserLL can't parse LR grammar");
         }
 
         let cur_node = self.cur_node;
@@ -122,28 +122,32 @@ pub fn display_ast(node_id: NodeId, parser: &ParserLL, gram: &Grammar, level: us
 
 #[cfg(test)]
 mod tests {
+    use crate::grammar::GrammarGenerator;
+
     use super::*;
 
     #[test]
     fn parser_test() {
-        let mut gram = Grammar::new();
+        let mut gram_gen = GrammarGenerator::new();
         
-        gram.new_nonterm("Program");
-        gram.new_nonterm("Statement");
-        let stat_tail = gram.new_nonterm("Statement_Tail");
-        gram.new_nonterm("Expression");
-        let expr_tail = gram.new_nonterm("Expression_Tail");
-        gram.new_term("Term", "[[:digit:]]+");
-        gram.new_term("Operator", "[-/+*]");
-        gram.new_term("End Statement", ";");
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Statement");
+        let stat_tail = gram_gen.new_nonterm("Statement_Tail");
+        gram_gen.new_nonterm("Expression");
+        let expr_tail = gram_gen.new_nonterm("Expression_Tail");
+        gram_gen.new_term("Term", "[[:digit:]]+");
+        gram_gen.new_term("Operator", "[-/+*]");
+        gram_gen.new_term("End Statement", ";");
 
-        gram.make_prod("Program", vec!["Statement", "Statement_Tail"]);
-        gram.make_prod("Statement_Tail", vec!["Statement", "Statement_Tail"]);
-        gram.make_eps(stat_tail);
-        gram.make_prod("Statement", vec!["Expression", "End Statement"]);
-        gram.make_prod("Expression", vec!["Term", "Expression_Tail"]);
-        gram.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
-        gram.make_eps(expr_tail);
+        gram_gen.make_prod("Program", vec!["Statement", "Statement_Tail"]);
+        gram_gen.make_prod("Statement_Tail", vec!["Statement", "Statement_Tail"]);
+        gram_gen.make_eps(stat_tail);
+        gram_gen.make_prod("Statement", vec!["Expression", "End Statement"]);
+        gram_gen.make_prod("Expression", vec!["Term", "Expression_Tail"]);
+        gram_gen.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
+        gram_gen.make_eps(expr_tail);
+
+        let gram = gram_gen.generate();
 
         println!("{}", gram);
 

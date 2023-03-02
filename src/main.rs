@@ -4,6 +4,7 @@ mod parser;
 
 use std::env;
 use std::fs;
+use grammar::GrammarGenerator;
 use tokenizer::Tokenizer;
 use grammar::Grammar;
 use parser::{Parser, ParserLL};
@@ -18,24 +19,24 @@ fn lang_tokenizer() -> Tokenizer {
 }
 
 fn lang_grammar() -> Grammar {
-    let mut gram = Grammar::new();
+    let mut gram_gen = GrammarGenerator::new();
 
-    gram.new_nonterm("Language");
-    gram.new_nonterm("Rule");
-    gram.new_nonterm("RHS_Tail");
-    let rule_tail = gram.new_nonterm("Rule_Tail");
-    gram.new_term("Identifier", "[[^:space:]&&[^;]]");
-    gram.new_term("Production_Symbol", "->");
-    gram.new_term("EndLine", ";");
+    gram_gen.new_nonterm("Language");
+    gram_gen.new_nonterm("Rule");
+    gram_gen.new_nonterm("RHS_Tail");
+    let rule_tail = gram_gen.new_nonterm("Rule_Tail");
+    gram_gen.new_term("Identifier", "[[^:space:]&&[^;]]");
+    gram_gen.new_term("Production_Symbol", "->");
+    gram_gen.new_term("EndLine", ";");
 
-    gram.make_prod("Language", vec!["Rule", "Rule_Tail"]);
-    gram.make_prod("Rule_Tail", vec!["Rule", "Rule_Tail"]);
-    gram.make_eps(rule_tail);
-    gram.make_prod("Rule", vec!["Identifier", "Production_Symbol", "Identifier", "RHS_Tail"]);
-    gram.make_prod("RHS_Tail", vec!["Identifier", "RHS_Tail"]);
-    gram.make_prod("RHS_Tail", vec!["EndLine"]);
+    gram_gen.make_prod("Language", vec!["Rule", "Rule_Tail"]);
+    gram_gen.make_prod("Rule_Tail", vec!["Rule", "Rule_Tail"]);
+    gram_gen.make_eps(rule_tail);
+    gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "Identifier", "RHS_Tail"]);
+    gram_gen.make_prod("RHS_Tail", vec!["Identifier", "RHS_Tail"]);
+    gram_gen.make_prod("RHS_Tail", vec!["EndLine"]);
     
-    gram
+    gram_gen.generate()
 }
 
 
@@ -81,7 +82,7 @@ mod tests {
         parser.new_node(0, None);
         match parser.parse(&gram, &tokens) {
             Ok(_) => (),
-            Err(_) => (),
+            Err(e) => panic!("{}", e),
         }
 
         // parser::display_ast(0, &parser, &gram, 0);

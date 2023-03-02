@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::{collections::{HashSet, HashMap}, fmt::Display};
+use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap, slice::Iter};
 
 pub type NodeDefId = usize;
 pub type ProductionId = usize;
@@ -23,23 +23,51 @@ pub struct NodeDef {
     pub follow: HashSet<Regex>,
 }
 
+#[derive(PartialEq)]
+pub enum GrammarClass {
+    Undefined,
+    LL(i32),
+    LR(i32),
+    Mixed(i32),
+}
+
 pub struct Grammar {
     pub nodes: Vec<NodeDef>,
 
-    ll_flag: bool,
-    lr_flag: bool,
+    pub class: GrammarClass,
+    pub node_id_map: HashMap<String, NodeDefId>,
+}
+
+pub struct GrammarGenerator {
+    nodes: Vec<NodeDef>,
+
+    class: GrammarClass,
     node_id_map: HashMap<String, NodeDefId>,
 }
 
-impl Grammar {
+impl GrammarGenerator {
     pub fn new() -> Self {
         let gram = Self {
             nodes: Vec::new(),
-            
-            ll_flag: false,
-            lr_flag: false,
+            class: GrammarClass::Undefined,
             node_id_map: HashMap::new(),
         };
+        gram
+    }
+
+    pub fn generate(&mut self) -> Grammar {
+        let class = GrammarClass::Undefined;
+
+        let mut gram = Grammar {
+            nodes: Vec::new(),
+            class: class,
+            node_id_map: HashMap::new(),
+        };
+
+        swap(&mut self.nodes, &mut gram.nodes);
+        swap(&mut self.node_id_map, &mut gram.node_id_map);
+        swap(&mut self.class, &mut gram.class);
+
         gram
     }
     
@@ -88,25 +116,29 @@ impl Grammar {
 
         // Left-recursion flag
         if rhs[0] == def_id {
-            self.lr_flag = true;
+            let n = 1;
+            self.class = match self.class {
+                GrammarClass::Undefined => GrammarClass::LR(n),
+                GrammarClass::LL(m) => GrammarClass::Mixed(n),
+                GrammarClass::LR(m) => GrammarClass::LR(n),
+                GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
+            }
         }
-
+        
         // Right-recursion flag
         if rhs[rhs.len()-1] == def_id {
-            self.ll_flag = true;
+            let n = 1;
+            self.class = match self.class {
+                GrammarClass::Undefined => GrammarClass::LL(n),
+                GrammarClass::LL(m) => GrammarClass::LL(n),
+                GrammarClass::LR(m) => GrammarClass::Mixed(n),
+                GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
+            }
         }
 
         self.nodes[def_id].productions.push(rhs);
 
         new_prod_id
-    }
-
-    pub fn is_ll(&self) -> bool {
-        self.ll_flag
-    }
-
-    pub fn is_lr(&self) -> bool {
-        self.lr_flag
     }
 
     pub fn make_eps(&mut self, def_id: NodeDefId) {
@@ -120,6 +152,26 @@ impl Grammar {
             rhs.push(self.node_id_map[s]);
         }
         self.new_prod(def_id, rhs)
+    }
+}
+
+impl Grammar {
+    pub fn is_ll(&self) -> bool {
+        match self.class {
+            GrammarClass::Undefined => false,
+            GrammarClass::LL(n) => true,
+            GrammarClass::LR(n) => false,
+            GrammarClass::Mixed(n) => true,
+        }
+    }
+
+    pub fn is_lr(&self) -> bool {
+        match self.class {
+            GrammarClass::Undefined => false,
+            GrammarClass::LL(n) => false,
+            GrammarClass::LR(n) => true,
+            GrammarClass::Mixed(n) => true,
+        }
     }
 
     fn has_first(&self, node_def: NodeDefId, tok: &str) -> bool {
@@ -172,16 +224,18 @@ mod tests {
     use super::*;
     #[test]
     fn grammar_test() {
-        let mut gram = Grammar::new();
+        let mut gram_gen = GrammarGenerator::new();
         
-        let expr = gram.new_nonterm("Expression");
-        let expr_tail = gram.new_nonterm("Expression_Tail");
-        let term = gram.new_term("Term", "[[:digit:]]+");
-        let op = gram.new_term("Operator", "[-/+*]");
+        let expr = gram_gen.new_nonterm("Expression");
+        let expr_tail = gram_gen.new_nonterm("Expression_Tail");
+        let term = gram_gen.new_term("Term", "[[:digit:]]+");
+        let op = gram_gen.new_term("Operator", "[-/+*]");
 
-        let prod1 = gram.new_prod(expr, vec![term, expr_tail]);
-        let prod2 = gram.new_prod(expr_tail, vec![op, expr]);
-        gram.make_eps(expr_tail);
+        let prod1 = gram_gen.new_prod(expr, vec![term, expr_tail]);
+        let prod2 = gram_gen.new_prod(expr_tail, vec![op, expr]);
+        gram_gen.make_eps(expr_tail);
+
+        let gram = gram_gen.generate();
 
         println!("{}", gram);
 
