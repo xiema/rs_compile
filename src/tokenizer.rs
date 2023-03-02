@@ -61,7 +61,7 @@ impl Tokenizer {
         }
     }
 
-    pub fn tokenize(&mut self, in_str: String) -> Vec<String> {
+    pub fn tokenize(&mut self, in_str: &str) -> Vec<String> {
         let mut tokens: Vec<String> = Vec::new();
 
         while self.pos < in_str.len() {
@@ -119,7 +119,7 @@ mod tests {
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
 
-        let tokens = tokenizer.tokenize(String::from(code));
+        let tokens = tokenizer.tokenize(code);
         
         // display_tokens(&tokens);
         
@@ -140,7 +140,7 @@ mod tests {
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
 
-        let tokens = tokenizer.tokenize(String::from(code));
+        let tokens = tokenizer.tokenize(code);
         
         // display_tokens(&tokens);
     }

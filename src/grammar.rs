@@ -1,24 +1,24 @@
 use regex::Regex;
-use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap, slice::Iter};
+use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap};
 
-pub type NodeDefId = usize;
+pub type GvarId = usize;
 pub type ProductionId = usize;
 
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum NodeType {
+pub enum GvarType {
     Terminal,
     NonTerminal,
 }
 
-pub struct NodeDef {
-    pub id: NodeDefId,
-    pub node_type: NodeType,
+pub struct Gvar {
+    pub id: GvarId,
+    pub gvar_type: GvarType,
     pub name: String,
     pattern: Option<Regex>,
     eps: bool,
 
-    pub productions: Vec<Vec<NodeDefId>>,
+    pub productions: Vec<Vec<GvarId>>,
     pub first: HashSet<Regex>,
     pub follow: HashSet<Regex>,
 }
@@ -32,51 +32,75 @@ pub enum GrammarClass {
 }
 
 pub struct Grammar {
-    pub nodes: Vec<NodeDef>,
+    pub gvars: Vec<Gvar>,
 
     pub class: GrammarClass,
-    pub node_id_map: HashMap<String, NodeDefId>,
+    pub gvar_id_map: HashMap<String, GvarId>,
 }
 
 pub struct GrammarGenerator {
-    nodes: Vec<NodeDef>,
-
-    class: GrammarClass,
-    node_id_map: HashMap<String, NodeDefId>,
+    gvars: Vec<Gvar>,
+    gvar_id_map: HashMap<String, GvarId>,
 }
 
 impl GrammarGenerator {
     pub fn new() -> Self {
-        let gram = Self {
-            nodes: Vec::new(),
-            class: GrammarClass::Undefined,
-            node_id_map: HashMap::new(),
-        };
-        gram
+        Self {
+            gvars: Vec::new(),
+            gvar_id_map: HashMap::new(),
+        }
     }
 
     pub fn generate(&mut self) -> Grammar {
-        let class = GrammarClass::Undefined;
-
         let mut gram = Grammar {
-            nodes: Vec::new(),
-            class: class,
-            node_id_map: HashMap::new(),
+            gvars: Vec::new(),
+            class: self.get_grammar_class(),
+            gvar_id_map: HashMap::new(),
         };
 
-        swap(&mut self.nodes, &mut gram.nodes);
-        swap(&mut self.node_id_map, &mut gram.node_id_map);
-        swap(&mut self.class, &mut gram.class);
+        swap(&mut self.gvars, &mut gram.gvars);
+        swap(&mut self.gvar_id_map, &mut gram.gvar_id_map);
 
         gram
     }
-    
-    pub fn new_nonterm(&mut self, name: &str) -> NodeDefId {
-        let new_node_id = self.nodes.len();
 
-        self.nodes.push(NodeDef {
-            id: new_node_id,
-            node_type: NodeType::NonTerminal,
+    fn get_grammar_class(&self) -> GrammarClass {
+        let mut gclass = GrammarClass::Undefined;
+        for gvar in &self.gvars {
+            for rhs in &gvar.productions {
+                // Left-recursion flag
+                if rhs[0] == gvar.id {
+                    let n = 1;
+                    gclass = match gclass {
+                        GrammarClass::Undefined => GrammarClass::LR(n),
+                        GrammarClass::LL(m) => GrammarClass::Mixed(n),
+                        GrammarClass::LR(m) => GrammarClass::LR(n),
+                        GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
+                    }
+                }
+                
+                // Right-recursion flag
+                if rhs[rhs.len()-1] == gvar.id {
+                    let n = 1;
+                    gclass = match gclass {
+                        GrammarClass::Undefined => GrammarClass::LL(n),
+                        GrammarClass::LL(m) => GrammarClass::LL(n),
+                        GrammarClass::LR(m) => GrammarClass::Mixed(n),
+                        GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
+                    }
+                }
+            }
+        }
+
+        gclass
+    }
+    
+    pub fn new_nonterm(&mut self, name: &str) -> GvarId {
+        let new_gvar_id = self.gvars.len();
+
+        self.gvars.push(Gvar {
+            id: new_gvar_id,
+            gvar_type: GvarType::NonTerminal,
             name: String::from(name),
             pattern: None,
             eps: false,
@@ -86,17 +110,17 @@ impl GrammarGenerator {
             follow: HashSet::new(),
         });
 
-        self.node_id_map.insert(String::from(name), new_node_id);
+        self.gvar_id_map.insert(String::from(name), new_gvar_id);
         
-        new_node_id
+        new_gvar_id
     }
 
-    pub fn new_term(&mut self, name: &str, pattern: &str) -> NodeDefId {
-        let new_node_id = self.nodes.len();
+    pub fn new_term(&mut self, name: &str, pattern: &str) -> GvarId {
+        let new_gvar_id = self.gvars.len();
 
-        self.nodes.push(NodeDef {
-            id: new_node_id,
-            node_type: NodeType::Terminal,
+        self.gvars.push(Gvar {
+            id: new_gvar_id,
+            gvar_type: GvarType::Terminal,
             name: String::from(name),
             pattern: Some(Regex::new((String::from("^(") + pattern + ")").as_str()).unwrap()),
             eps: false,
@@ -106,50 +130,28 @@ impl GrammarGenerator {
             follow: HashSet::new(),
         });
 
-        self.node_id_map.insert(String::from(name), new_node_id);
+        self.gvar_id_map.insert(String::from(name), new_gvar_id);
 
-        new_node_id
+        new_gvar_id
     }
 
-    pub fn new_prod(&mut self, def_id: NodeDefId, rhs: Vec<NodeDefId>) -> ProductionId {
-        let new_prod_id = self.nodes[def_id].productions.len();
+    pub fn new_prod(&mut self, def_id: GvarId, rhs: Vec<GvarId>) -> ProductionId {
+        let new_prod_id = self.gvars[def_id].productions.len();
 
-        // Left-recursion flag
-        if rhs[0] == def_id {
-            let n = 1;
-            self.class = match self.class {
-                GrammarClass::Undefined => GrammarClass::LR(n),
-                GrammarClass::LL(m) => GrammarClass::Mixed(n),
-                GrammarClass::LR(m) => GrammarClass::LR(n),
-                GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
-            }
-        }
-        
-        // Right-recursion flag
-        if rhs[rhs.len()-1] == def_id {
-            let n = 1;
-            self.class = match self.class {
-                GrammarClass::Undefined => GrammarClass::LL(n),
-                GrammarClass::LL(m) => GrammarClass::LL(n),
-                GrammarClass::LR(m) => GrammarClass::Mixed(n),
-                GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
-            }
-        }
-
-        self.nodes[def_id].productions.push(rhs);
+        self.gvars[def_id].productions.push(rhs);
 
         new_prod_id
     }
 
-    pub fn make_eps(&mut self, def_id: NodeDefId) {
-        self.nodes[def_id].eps = true;
+    pub fn make_eps(&mut self, def_id: GvarId) {
+        self.gvars[def_id].eps = true;
     }
 
     pub fn make_prod(&mut self, lhs_str: &str, rhs_str: Vec<&str>) -> ProductionId {
-        let def_id = self.node_id_map[lhs_str];
+        let def_id = self.gvar_id_map[lhs_str];
         let mut rhs = Vec::new();
         for s in rhs_str {
-            rhs.push(self.node_id_map[s]);
+            rhs.push(self.gvar_id_map[s]);
         }
         self.new_prod(def_id, rhs)
     }
@@ -174,25 +176,25 @@ impl Grammar {
         }
     }
 
-    fn has_first(&self, node_def: NodeDefId, tok: &str) -> bool {
-        match self.nodes[node_def].node_type {
-            NodeType::Terminal => self.nodes[node_def].pattern.as_ref().unwrap().is_match(tok),
-            NodeType::NonTerminal => self.nodes[node_def].productions.iter().any(|p| self.has_first(p[0], tok))
+    fn has_first(&self, gvar: GvarId, tok: &str) -> bool {
+        match self.gvars[gvar].gvar_type {
+            GvarType::Terminal => self.gvars[gvar].pattern.as_ref().unwrap().is_match(tok),
+            GvarType::NonTerminal => self.gvars[gvar].productions.iter().any(|p| self.has_first(p[0], tok))
         }
     }
 
-    pub fn find_next(&self, node_def: NodeDefId, tok: Option<&str>) -> Result<Option<ProductionId>, &str> {
+    pub fn find_next(&self, gvar: GvarId, tok: Option<&str>) -> Result<Option<ProductionId>, &str> {
         match tok {
             None => (),
             Some(s) => {
-                for i in 0..self.nodes[node_def].productions.len() {
-                    if self.has_first(self.nodes[node_def].productions[i][0], s) {
+                for i in 0..self.gvars[gvar].productions.len() {
+                    if self.has_first(self.gvars[gvar].productions[i][0], s) {
                         return Ok(Some(i));
                     }
                 }
             }
         }
-        if self.nodes[node_def].eps {
+        if self.gvars[gvar].eps {
             return Ok(None);
         }
         return Err("Couldn't find production");
@@ -201,17 +203,17 @@ impl Grammar {
 
 impl Display for Grammar {
     fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for node in &self.nodes {
-            for prod in &node.productions {
-                print!("{} --> ", node.name);
+        for gvar in &self.gvars {
+            for prod in &gvar.productions {
+                print!("{} --> ", gvar.name);
                 for child in prod {
-                    print!("{} ", self.nodes[*child].name);
+                    print!("{} ", self.gvars[*child].name);
                 }
                 print!("\n");
             }
         }
-        for node in self.nodes.iter().filter(|n| n.node_type == NodeType::Terminal) {
-            println!("{} --> {}", node.name, node.pattern.as_ref().unwrap());
+        for gvar in self.gvars.iter().filter(|n| n.gvar_type == GvarType::Terminal) {
+            println!("{} --> {}", gvar.name, gvar.pattern.as_ref().unwrap());
         }
         Ok(())
     }

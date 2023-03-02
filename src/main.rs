@@ -52,7 +52,7 @@ fn main() {
     let gram = lang_grammar();
     let mut parser = ParserLL::new();
 
-    let tokens = tokenizer.tokenize(asm);
+    let tokens = tokenizer.tokenize(asm.as_str());
     match parser.parse(&gram, &tokens) {
         Ok(_) => (),
         Err(_) => (),
@@ -69,7 +69,7 @@ mod tests {
         let mut tok = lang_tokenizer();
 
         let code = "   \nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n lhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
-        let tokens = tok.tokenize(String::from(code));
+        let tokens = tok.tokenize(code);
 
         assert_eq!(tokens[0..6], ["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3", ";"]);
         assert_eq!(tokens[6..10], ["lhs2", "->", "rhs2_1", ";"]);

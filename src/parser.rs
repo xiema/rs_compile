@@ -1,10 +1,10 @@
-use crate::grammar::{NodeDefId, ProductionId, Grammar, NodeType};
+use crate::grammar::{GvarId, ProductionId, Grammar, GvarType};
 
 type NodeId = usize;
 
 pub struct Node {
     id: NodeId,
-    node_def: NodeDefId,
+    gvar_id: GvarId,
     prod_id: Option<ProductionId>,
     token: Option<String>,
     parent: Option<NodeId>,
@@ -30,13 +30,13 @@ impl ParserLL {
         }
     }
 
-    /// Creates a new node (allocated in Parser.nodes), optionally associating it with a parent.
+    /// Creates a new node, optionally associating it with a parent.
     /// Returns the new node's NodeId
-    pub fn new_node(&mut self, node_def: NodeDefId, parent: Option<NodeId>) -> NodeId {
+    pub fn new_node(&mut self, gvar_id: GvarId, parent: Option<NodeId>) -> NodeId {
         let new_node_id = self.nodes.len();
         self.nodes.push(Node {
             id: new_node_id,
-            node_def: node_def,
+            gvar_id: gvar_id,
             prod_id: None,
             token: None,
             parent: parent,
@@ -72,25 +72,25 @@ impl Parser for ParserLL {
         }
 
         let cur_node = self.cur_node;
-        let node_type = grammar.nodes[self.nodes[cur_node].node_def].node_type;
-        match node_type {
-            NodeType::Terminal => {
+        let gvar_type = grammar.gvars[self.nodes[cur_node].gvar_id].gvar_type;
+        match gvar_type {
+            GvarType::Terminal => {
                 self.nodes[cur_node].token = Some(String::from(&tokens[self.pos]));
                 self.pos += 1;
                 // println!("Parsing {}", grammar.nodes[self.nodes[cur_node].node_def].name);
                 return Ok(());
             }
             ,
-            NodeType::NonTerminal => {
+            GvarType::NonTerminal => {
                 let token = self.try_get_token(tokens);
-                let res_prod = grammar.find_next(self.nodes[cur_node].node_def, token)
+                let res_prod = grammar.find_next(self.nodes[cur_node].gvar_id, token)
                     .unwrap_or_else(|err| panic!("Parser error: {}", err));
         
                 match res_prod {
                     Some(prod_id) => {
                         // expand lhs to rhs
                         self.nodes[cur_node].prod_id = Some(prod_id);
-                        let prod = &grammar.nodes[self.nodes[cur_node].node_def].productions[prod_id];
+                        let prod = &grammar.gvars[self.nodes[cur_node].gvar_id].productions[prod_id];
                         for node_def_id in prod {
                             self.cur_node = self.new_node(*node_def_id, Some(cur_node));
                             match self.parse(grammar, &tokens) {
@@ -113,7 +113,7 @@ impl Parser for ParserLL {
 
 pub fn display_ast(node_id: NodeId, parser: &ParserLL, gram: &Grammar, level: usize) {
     let indent = String::from("  ").repeat(level);
-    println!("{}{}", indent, gram.nodes[parser.nodes[node_id].node_def].name);
+    println!("{}{}", indent, gram.gvars[parser.nodes[node_id].gvar_id].name);
     for child in &parser.nodes[node_id].children {
         display_ast(*child, parser, gram, level + 1);
     }
