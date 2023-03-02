@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap};
+use crate::tokenizer::{Token};
 
 pub type GvarId = usize;
 pub type ProductionId = usize;
@@ -51,6 +52,8 @@ impl GrammarGenerator {
         }
     }
 
+    /// Generate Grammar from the current configuration.
+    /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
         let mut gram = Grammar {
             gvars: Vec::new(),
@@ -183,12 +186,12 @@ impl Grammar {
         }
     }
 
-    pub fn find_next(&self, gvar: GvarId, tok: Option<&str>) -> Result<Option<ProductionId>, &str> {
+    pub fn find_next(&self, gvar: GvarId, tok: Option<&Token>) -> Result<Option<ProductionId>, &str> {
         match tok {
             None => (),
             Some(s) => {
                 for i in 0..self.gvars[gvar].productions.len() {
-                    if self.has_first(self.gvars[gvar].productions[i][0], s) {
+                    if self.has_first(self.gvars[gvar].productions[i][0], s.text.as_str()) {
                         return Ok(Some(i));
                     }
                 }
@@ -241,8 +244,11 @@ mod tests {
 
         println!("{}", gram);
 
-        assert_eq!(gram.find_next(expr, Some("4")).unwrap().unwrap(), prod1);
-        assert_eq!(gram.find_next(expr_tail, Some("+")).unwrap().unwrap(), prod2);
+
+        let tok = Token {text: String::from("4"), token_type: 0};
+        assert_eq!(gram.find_next(expr, Some(&tok)).unwrap().unwrap(), prod1);
+        let tok = Token {text: String::from("+"), token_type: 0};
+        assert_eq!(gram.find_next(expr_tail, Some(&tok)).unwrap().unwrap(), prod2);
         assert_eq!(gram.find_next(expr_tail, None).unwrap(), None);
     }
 }

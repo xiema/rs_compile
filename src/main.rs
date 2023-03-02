@@ -12,10 +12,8 @@ use parser::{Parser, ParserLL};
 
 fn lang_tokenizer() -> Tokenizer {
     Tokenizer::new(
-        "->|[[:^space:]]+", 
-        "[[:space:]&&[^\n]]+", 
-        "\n+",
-        ";")
+        vec!["\n+[[:space:]]*", "->", "[[:^space:]]+"],
+        "[[:space:]&&[^\n]]+")
 }
 
 fn lang_grammar() -> Grammar {
@@ -23,18 +21,18 @@ fn lang_grammar() -> Grammar {
 
     gram_gen.new_nonterm("Language");
     gram_gen.new_nonterm("Rule");
-    gram_gen.new_nonterm("RHS_Tail");
+    let rhs_tail = gram_gen.new_nonterm("RHS_Tail");
     let rule_tail = gram_gen.new_nonterm("Rule_Tail");
-    gram_gen.new_term("Identifier", "[[^:space:]&&[^;]]");
+    gram_gen.new_term("Identifier", "[[^:space:]]+");
     gram_gen.new_term("Production_Symbol", "->");
-    gram_gen.new_term("EndLine", ";");
+    gram_gen.new_term("EndLine", "\n+[[:space:]]*");
 
     gram_gen.make_prod("Language", vec!["Rule", "Rule_Tail"]);
     gram_gen.make_prod("Rule_Tail", vec!["Rule", "Rule_Tail"]);
     gram_gen.make_eps(rule_tail);
     gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "Identifier", "RHS_Tail"]);
     gram_gen.make_prod("RHS_Tail", vec!["Identifier", "RHS_Tail"]);
-    gram_gen.make_prod("RHS_Tail", vec!["EndLine"]);
+    gram_gen.make_eps(rhs_tail);
     
     gram_gen.generate()
 }
@@ -63,6 +61,14 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tokenizer::*;
+
+    fn assert_tokens_str(t: &[Token], ts: Vec<&str>) {
+        assert_eq!(t.len(), ts.len());
+        for i in 0..t.len() {
+            assert_eq!(t[i].text, ts[i]);
+        }
+    }
 
     #[test]
     fn lang_test() {
@@ -71,9 +77,12 @@ mod tests {
         let code = "   \nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n lhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
         let tokens = tok.tokenize(code);
 
-        assert_eq!(tokens[0..6], ["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3", ";"]);
-        assert_eq!(tokens[6..10], ["lhs2", "->", "rhs2_1", ";"]);
-        assert_eq!(tokens[10..15], ["lhs3", "->", "rhs3_1", "rhs3_2", ";"]);
+        assert_eq!(tokens[0].token_type, 0 as usize);
+        assert_tokens_str(&tokens[1..6], vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3"]);
+        assert_eq!(tokens[6].token_type, 0 as usize);
+        assert_tokens_str(&tokens[7..10], vec!["lhs2", "->", "rhs2_1"]);
+        assert_eq!(tokens[10].token_type, 0 as usize);
+        assert_tokens_str(&tokens[11..15], vec!["lhs3", "->", "rhs3_1", "rhs3_2"]);
         // tokenizer::display_tokens(&tokens);
 
         let gram = lang_grammar();
@@ -86,5 +95,20 @@ mod tests {
         }
 
         // parser::display_ast(0, &parser, &gram, 0);
+    }
+
+    #[test]
+    fn lang_test_panic() {
+        let mut tok = lang_tokenizer();
+        let gram = lang_grammar();
+        let mut parser = ParserLL::new();
+        
+        let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2";
+        let tokens = tok.tokenize(code);
+        parser.new_node(0, None);
+        match parser.parse(&gram, &tokens) {
+            Ok(_) => (),
+            Err(e) => panic!("{}", e),
+        }
     }
 }

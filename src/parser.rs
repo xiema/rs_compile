@@ -1,4 +1,5 @@
 use crate::grammar::{GvarId, ProductionId, Grammar, GvarType};
+use crate::tokenizer::{Tokenizer, Token};
 
 type NodeId = usize;
 
@@ -6,13 +7,13 @@ pub struct Node {
     id: NodeId,
     gvar_id: GvarId,
     prod_id: Option<ProductionId>,
-    token: Option<String>,
+    token: Option<Token>,
     parent: Option<NodeId>,
     children: Vec<NodeId>,
 }
 
 pub trait Parser {
-    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<String>) -> Result<(), &str>;
+    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>) -> Result<(), &str>;
 }
 
 pub struct ParserLL {
@@ -53,19 +54,10 @@ impl ParserLL {
 
         new_node_id
     }
-
-    fn try_get_token<'a>(&self, tokens: &'a Vec<String>) -> Option<&'a str> {
-        if self.pos < tokens.len() {
-            Some(tokens[self.pos].as_str())
-        }
-        else {
-            None
-        }
-    }
 }
 
 impl Parser for ParserLL {
-    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<String>) -> Result<(), &str> {
+    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>) -> Result<(), &str> {
         // Grammar must not be LR
         if grammar.is_lr() {
             panic!("ParserLL can't parse LR grammar");
@@ -75,16 +67,15 @@ impl Parser for ParserLL {
         let gvar_type = grammar.gvars[self.nodes[cur_node].gvar_id].gvar_type;
         match gvar_type {
             GvarType::Terminal => {
-                self.nodes[cur_node].token = Some(String::from(&tokens[self.pos]));
+                self.nodes[cur_node].token = Some(tokens[self.pos].clone());
                 self.pos += 1;
                 // println!("Parsing {}", grammar.nodes[self.nodes[cur_node].node_def].name);
                 return Ok(());
             }
             ,
             GvarType::NonTerminal => {
-                let token = self.try_get_token(tokens);
-                let res_prod = grammar.find_next(self.nodes[cur_node].gvar_id, token)
-                    .unwrap_or_else(|err| panic!("Parser error: {}", err));
+                let res_prod = grammar.find_next(self.nodes[cur_node].gvar_id, tokens.get(self.pos))
+                    .unwrap_or_else(|err| panic!("Parser error: {}, {}", err, tokens[self.pos].text));
         
                 match res_prod {
                     Some(prod_id) => {
@@ -152,11 +143,16 @@ mod tests {
         println!("{}", gram);
 
         let mut parser = ParserLL::new();
-        let code = vec!["1", "+", "1", ";", "2", "+", "2", ";"];
-        let code = code.into_iter().map(|s| String::from(s)).collect();
+        let code = "1 + 1; 2 + 2 ;";
+
+        let mut tokenizer = Tokenizer::new(
+            vec![";", "[[:digit:]]+", "[-+*/]"],
+            "[[:space:]]"
+        );
+        let tokens = tokenizer.tokenize(code);
         
         parser.new_node(0, None);
-        match parser.parse(&gram, &code) {
+        match parser.parse(&gram, &tokens) {
             Ok(_) => (),
             Err(_) => (),
         };
