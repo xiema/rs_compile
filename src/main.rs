@@ -5,36 +5,39 @@ mod parser;
 use std::env;
 use std::fs;
 use grammar::GrammarGenerator;
+use tokenizer::TokenTypeId;
 use tokenizer::Tokenizer;
 use grammar::Grammar;
 use parser::{Parser, ParserLL};
-// use regex::Regex;
 
-fn lang_tokenizer() -> Tokenizer {
-    Tokenizer::new(
+fn define_lang() -> (Tokenizer, Grammar) {
+    let tok = Tokenizer::new(
         vec!["\n+[[:space:]]*", "->", "[[:^space:]]+"],
-        "[[:space:]&&[^\n]]+")
-}
+        "[[:space:]&&[^\n]]+");
 
-fn lang_grammar() -> Grammar {
     let mut gram_gen = GrammarGenerator::new();
 
     gram_gen.new_nonterm("Language");
     gram_gen.new_nonterm("Rule");
-    let rhs_tail = gram_gen.new_nonterm("RHS_Tail");
+    gram_gen.new_nonterm("RHS_Tail");
     let rule_tail = gram_gen.new_nonterm("Rule_Tail");
-    gram_gen.new_term("Identifier", "[[^:space:]]+");
-    gram_gen.new_term("Production_Symbol", "->");
-    gram_gen.new_term("EndLine", "\n+[[:space:]]*");
+    gram_gen.new_term("Identifier", 2 as TokenTypeId);
+    gram_gen.new_term("Production_Symbol", 1 as TokenTypeId);
+    gram_gen.new_term("EndLine", 0 as TokenTypeId);
+    gram_gen.new_term("EOF", -1 as TokenTypeId);
 
     gram_gen.make_prod("Language", vec!["Rule", "Rule_Tail"]);
+    gram_gen.make_prod("Language", vec!["EndLine", "Rule", "Rule_Tail"]);
     gram_gen.make_prod("Rule_Tail", vec!["Rule", "Rule_Tail"]);
     gram_gen.make_eps(rule_tail);
     gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "Identifier", "RHS_Tail"]);
     gram_gen.make_prod("RHS_Tail", vec!["Identifier", "RHS_Tail"]);
-    gram_gen.make_eps(rhs_tail);
+    gram_gen.make_prod("RHS_Tail", vec!["EndLine"]);
+    gram_gen.make_prod("RHS_Tail", vec!["EOF"]);
     
-    gram_gen.generate()
+    let gram = gram_gen.generate();
+
+    return (tok, gram);
 }
 
 
@@ -46,8 +49,7 @@ fn main() {
         Err(e) => panic!("Error: {:?}", e),
     };
 
-    let mut tokenizer = lang_tokenizer();
-    let gram = lang_grammar();
+    let (mut tokenizer, gram) = define_lang();
     let mut parser = ParserLL::new();
 
     let tokens = tokenizer.tokenize(asm.as_str());
@@ -72,21 +74,19 @@ mod tests {
 
     #[test]
     fn lang_test() {
-        let mut tok = lang_tokenizer();
-
-        let code = "   \nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n lhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
-        let tokens = tok.tokenize(code);
-
-        assert_eq!(tokens[0].token_type, 0 as usize);
-        assert_tokens_str(&tokens[1..6], vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3"]);
-        assert_eq!(tokens[6].token_type, 0 as usize);
-        assert_tokens_str(&tokens[7..10], vec!["lhs2", "->", "rhs2_1"]);
-        assert_eq!(tokens[10].token_type, 0 as usize);
-        assert_tokens_str(&tokens[11..15], vec!["lhs3", "->", "rhs3_1", "rhs3_2"]);
-        // tokenizer::display_tokens(&tokens);
-
-        let gram = lang_grammar();
+        let (mut tok, gram) = define_lang();
         let mut parser = ParserLL::new();
+
+        let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n lhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
+        let tokens = tok.tokenize(code);
+        
+        assert_tokens_str(&tokens[0..5], vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3"]);
+        assert_eq!(tokens[5].token_type, 0 as TokenTypeId);
+        assert_tokens_str(&tokens[6..9], vec!["lhs2", "->", "rhs2_1"]);
+        assert_eq!(tokens[9].token_type, 0 as TokenTypeId);
+        assert_tokens_str(&tokens[10..14], vec!["lhs3", "->", "rhs3_1", "rhs3_2"]);
+        assert_eq!(tokens[14].token_type, -1);
+        // tokenizer::display_tokens(&tokens);
 
         parser.new_node(0, None);
         match parser.parse(&gram, &tokens) {
@@ -94,16 +94,16 @@ mod tests {
             Err(e) => panic!("{}", e),
         }
 
-        // parser::display_ast(0, &parser, &gram, 0);
+        parser::display_ast(0, &parser, &gram, 0);
     }
 
     #[test]
+    #[should_panic]
     fn lang_test_panic() {
-        let mut tok = lang_tokenizer();
-        let gram = lang_grammar();
+        let (mut tok, gram) = define_lang();
         let mut parser = ParserLL::new();
         
-        let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2";
+        let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2 ->";
         let tokens = tok.tokenize(code);
         parser.new_node(0, None);
         match parser.parse(&gram, &tokens) {

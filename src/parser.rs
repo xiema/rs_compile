@@ -113,12 +113,16 @@ pub fn display_ast(node_id: NodeId, parser: &ParserLL, gram: &Grammar, level: us
 
 #[cfg(test)]
 mod tests {
-    use crate::grammar::GrammarGenerator;
+    use crate::{grammar::GrammarGenerator, tokenizer::TokenTypeId};
 
     use super::*;
 
     #[test]
     fn parser_test() {
+        let mut tokenizer = Tokenizer::new(
+            vec![";", "[[:digit:]]+", "[-+*/]"],
+            "[[:space:]]");
+
         let mut gram_gen = GrammarGenerator::new();
         
         gram_gen.new_nonterm("Program");
@@ -126,9 +130,9 @@ mod tests {
         let stat_tail = gram_gen.new_nonterm("Statement_Tail");
         gram_gen.new_nonterm("Expression");
         let expr_tail = gram_gen.new_nonterm("Expression_Tail");
-        gram_gen.new_term("Term", "[[:digit:]]+");
-        gram_gen.new_term("Operator", "[-/+*]");
-        gram_gen.new_term("End Statement", ";");
+        gram_gen.new_term("Term", 1 as TokenTypeId);
+        gram_gen.new_term("Operator", 2 as TokenTypeId);
+        gram_gen.new_term("End Statement", 0 as TokenTypeId);
 
         gram_gen.make_prod("Program", vec!["Statement", "Statement_Tail"]);
         gram_gen.make_prod("Statement_Tail", vec!["Statement", "Statement_Tail"]);
@@ -142,15 +146,10 @@ mod tests {
 
         println!("{}", gram);
 
-        let mut parser = ParserLL::new();
         let code = "1 + 1; 2 + 2 ;";
-
-        let mut tokenizer = Tokenizer::new(
-            vec![";", "[[:digit:]]+", "[-+*/]"],
-            "[[:space:]]"
-        );
         let tokens = tokenizer.tokenize(code);
         
+        let mut parser = ParserLL::new();
         parser.new_node(0, None);
         match parser.parse(&gram, &tokens) {
             Ok(_) => (),

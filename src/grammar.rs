@@ -1,6 +1,6 @@
 use regex::Regex;
 use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap};
-use crate::tokenizer::{Token};
+use crate::tokenizer::{Token, TokenTypeId};
 
 pub type GvarId = usize;
 pub type ProductionId = usize;
@@ -16,7 +16,7 @@ pub struct Gvar {
     pub id: GvarId,
     pub gvar_type: GvarType,
     pub name: String,
-    pattern: Option<Regex>,
+    token_type: Option<TokenTypeId>,
     eps: bool,
 
     pub productions: Vec<Vec<GvarId>>,
@@ -105,7 +105,7 @@ impl GrammarGenerator {
             id: new_gvar_id,
             gvar_type: GvarType::NonTerminal,
             name: String::from(name),
-            pattern: None,
+            token_type: None,
             eps: false,
 
             productions: Vec::new(),
@@ -118,14 +118,14 @@ impl GrammarGenerator {
         new_gvar_id
     }
 
-    pub fn new_term(&mut self, name: &str, pattern: &str) -> GvarId {
+    pub fn new_term(&mut self, name: &str, token_type: TokenTypeId) -> GvarId {
         let new_gvar_id = self.gvars.len();
 
         self.gvars.push(Gvar {
             id: new_gvar_id,
             gvar_type: GvarType::Terminal,
             name: String::from(name),
-            pattern: Some(Regex::new((String::from("^(") + pattern + ")").as_str()).unwrap()),
+            token_type: Some(token_type),
             eps: false,
 
             productions: Vec::new(),
@@ -179,19 +179,19 @@ impl Grammar {
         }
     }
 
-    fn has_first(&self, gvar: GvarId, tok: &str) -> bool {
+    fn has_first(&self, gvar: GvarId, token: &Token) -> bool {
         match self.gvars[gvar].gvar_type {
-            GvarType::Terminal => self.gvars[gvar].pattern.as_ref().unwrap().is_match(tok),
-            GvarType::NonTerminal => self.gvars[gvar].productions.iter().any(|p| self.has_first(p[0], tok))
+            GvarType::Terminal => self.gvars[gvar].token_type.unwrap().eq(&token.token_type),
+            GvarType::NonTerminal => self.gvars[gvar].productions.iter().any(|p| self.has_first(p[0], token))
         }
     }
 
-    pub fn find_next(&self, gvar: GvarId, tok: Option<&Token>) -> Result<Option<ProductionId>, &str> {
-        match tok {
+    pub fn find_next(&self, gvar: GvarId, token: Option<&Token>) -> Result<Option<ProductionId>, &str> {
+        match token {
             None => (),
-            Some(s) => {
+            Some(t) => {
                 for i in 0..self.gvars[gvar].productions.len() {
-                    if self.has_first(self.gvars[gvar].productions[i][0], s.text.as_str()) {
+                    if self.has_first(self.gvars[gvar].productions[i][0], t) {
                         return Ok(Some(i));
                     }
                 }
@@ -216,7 +216,7 @@ impl Display for Grammar {
             }
         }
         for gvar in self.gvars.iter().filter(|n| n.gvar_type == GvarType::Terminal) {
-            println!("{} --> {}", gvar.name, gvar.pattern.as_ref().unwrap());
+            println!("{} --> {}", gvar.name, gvar.token_type.unwrap());
         }
         Ok(())
     }
@@ -230,11 +230,14 @@ mod tests {
     #[test]
     fn grammar_test() {
         let mut gram_gen = GrammarGenerator::new();
+
+        let tok_term: TokenTypeId = 0;
+        let tok_op: TokenTypeId = 1;
         
         let expr = gram_gen.new_nonterm("Expression");
         let expr_tail = gram_gen.new_nonterm("Expression_Tail");
-        let term = gram_gen.new_term("Term", "[[:digit:]]+");
-        let op = gram_gen.new_term("Operator", "[-/+*]");
+        let term = gram_gen.new_term("Term", tok_term);
+        let op = gram_gen.new_term("Operator", tok_op);
 
         let prod1 = gram_gen.new_prod(expr, vec![term, expr_tail]);
         let prod2 = gram_gen.new_prod(expr_tail, vec![op, expr]);
@@ -245,9 +248,9 @@ mod tests {
         println!("{}", gram);
 
 
-        let tok = Token {text: String::from("4"), token_type: 0};
+        let tok = Token {text: String::from("4"), token_type: tok_term};
         assert_eq!(gram.find_next(expr, Some(&tok)).unwrap().unwrap(), prod1);
-        let tok = Token {text: String::from("+"), token_type: 0};
+        let tok = Token {text: String::from("+"), token_type: tok_op};
         assert_eq!(gram.find_next(expr_tail, Some(&tok)).unwrap().unwrap(), prod2);
         assert_eq!(gram.find_next(expr_tail, None).unwrap(), None);
     }

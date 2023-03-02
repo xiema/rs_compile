@@ -8,7 +8,7 @@ enum State {
     IGNORE,
 }
 
-type TokenTypeId = usize;
+pub type TokenTypeId = i32;
 
 #[derive(Clone)]
 pub struct Token {
@@ -17,7 +17,7 @@ pub struct Token {
 }
 
 impl Token {
-    fn new(text: &str, token_type: TokenTypeId) -> Self {
+    pub fn new(text: &str, token_type: TokenTypeId) -> Self {
         Self {
             text: String::from(text),
             token_type: token_type,
@@ -53,7 +53,7 @@ impl Tokenizer {
                 for i in 0..self.token_matchers.len() {
                     if let Some(m) = self.token_matchers[i].find(seq) {
                         self.pos += m.end();
-                        tokens.push(Token::new(&seq[m.start()..m.end()], i));
+                        tokens.push(Token::new(&seq[m.start()..m.end()], i as TokenTypeId));
                         return true;
                     }
                 }
@@ -70,23 +70,25 @@ impl Tokenizer {
 
     pub fn tokenize(&mut self, in_str: &str) -> Vec<Token> {
         let mut tokens: Vec<Token> = Vec::new();
+        let s = in_str.trim();
 
-        while self.pos < in_str.len() {
+        while self.pos < s.len() {
             let ok = match self.state {
-            State::START => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
-                            || self.match_state(State::IGNORE, &in_str[self.pos..], &mut tokens)
+            State::START => self.match_state(State::TOKEN, &s[self.pos..], &mut tokens)
+                            || self.match_state(State::IGNORE, &s[self.pos..], &mut tokens)
             ,
-            State::TOKEN => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
-                            || self.match_state(State::IGNORE, &in_str[self.pos..], &mut tokens)
+            State::TOKEN => self.match_state(State::TOKEN, &s[self.pos..], &mut tokens)
+                            || self.match_state(State::IGNORE, &s[self.pos..], &mut tokens)
             ,
-            State::IGNORE => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
+            State::IGNORE => self.match_state(State::TOKEN, &s[self.pos..], &mut tokens)
             };
             if !ok {
-                panic!("Tokenization error at char {}:\n{}", self.pos, &in_str[self.pos..cmp::min(in_str.len(), self.pos + 20)]);
+                panic!("Tokenization error at char {}:\n{}", self.pos, &s[self.pos..cmp::min(s.len(), self.pos + 20)]);
             }
         }
 
         // TODO: end with marker?
+        tokens.push(Token::new("", -1));
 
         return tokens;
     }
@@ -128,14 +130,13 @@ mod tests {
         
         // display_tokens(&tokens);
         
-        assert_eq!(tokens[0].token_type, 0 as usize);
-        assert_tokens_str(&tokens[1..7], vec!["line", "1", ",", "still", "line", "1"]);
-        assert_eq!(tokens[7].token_type, 0 as usize);
-        assert_tokens_str(&tokens[8..10], vec!["line", "2"]);
-        assert_eq!(tokens[10].token_type, 0 as usize);
-        assert_tokens_str(&tokens[11..15], vec!["line", "3", "still", "line"]);
-        assert_eq!(tokens[15].token_type, 0 as usize);
-        assert_tokens_str(&tokens[16..20], vec!["oops", "line", "4", "now"]);
+        assert_tokens_str(&tokens[0..6], vec!["line", "1", ",", "still", "line", "1"]);
+        assert_eq!(tokens[6].token_type, 0 as TokenTypeId);
+        assert_tokens_str(&tokens[7..9], vec!["line", "2"]);
+        assert_eq!(tokens[9].token_type, 0 as TokenTypeId);
+        assert_tokens_str(&tokens[10..14], vec!["line", "3", "still", "line"]);
+        assert_eq!(tokens[14].token_type, 0 as TokenTypeId);
+        assert_tokens_str(&tokens[15..19], vec!["oops", "line", "4", "now"]);
     }
 
     #[test]
@@ -143,7 +144,7 @@ mod tests {
     fn tokenizer_unhandled_char() {
         let mut tokenizer = Tokenizer::new(
         vec!["\n+[[:space:]]*", "([[:^space:]&&[^,]]+)"], 
-        "[[:space:]&&[^\n]]+",);
+        "[[:space:]&&[^\n]]+");
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
 
