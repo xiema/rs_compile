@@ -1,8 +1,9 @@
 use crate::grammar::{GvarId, ProductionId, Grammar, GvarType};
-use crate::tokenizer::{Tokenizer, Token};
+use crate::tokenizer::{Token};
 
 type NodeId = usize;
 
+#[allow(dead_code)]
 pub struct Node {
     id: NodeId,
     gvar_id: GvarId,
@@ -64,8 +65,7 @@ impl Parser for ParserLL {
         }
 
         let cur_node = self.cur_node;
-        let gvar_type = grammar.gvars[self.nodes[cur_node].gvar_id].gvar_type;
-        match gvar_type {
+        match grammar.gvars[self.nodes[cur_node].gvar_id].gvar_type {
             GvarType::Terminal => {
                 self.nodes[cur_node].token = Some(tokens[self.pos].clone());
                 self.pos += 1;
@@ -102,6 +102,7 @@ impl Parser for ParserLL {
     }
 }
 
+#[allow(dead_code)]
 pub fn display_ast(node_id: NodeId, parser: &ParserLL, gram: &Grammar, level: usize) {
     let indent = String::from("  ").repeat(level);
     println!("{}{}", indent, gram.gvars[parser.nodes[node_id].gvar_id].name);
@@ -113,7 +114,8 @@ pub fn display_ast(node_id: NodeId, parser: &ParserLL, gram: &Grammar, level: us
 
 #[cfg(test)]
 mod tests {
-    use crate::{grammar::GrammarGenerator, tokenizer::TokenTypeId};
+    use crate::grammar::*;
+    use crate::tokenizer::*;
 
     use super::*;
 

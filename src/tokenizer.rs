@@ -94,19 +94,8 @@ impl Tokenizer {
     }
 }
 
-pub fn display_tokens(tokens: &Vec<String>) {
-    for token in tokens {
-        if token == "" {
-            print!("\n");
-        }
-        else {
-            print!("'{}' ", token);
-        }
-    }
-    print!("\n");
-}
 
-
+#[allow(unused_variables)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,9 +136,7 @@ mod tests {
         "[[:space:]&&[^\n]]+");
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
-
-        let tokens = tokenizer.tokenize(code);
         
-        // display_tokens(&tokens);
+        let tokens = tokenizer.tokenize(code);
     }
 }

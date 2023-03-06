@@ -67,6 +67,7 @@ fn main() {
 mod tests {
     use super::*;
     use crate::tokenizer::*;
+    use crate::grammar::*;
 
     fn assert_tokens_str(t: &[Token], ts: Vec<&str>) {
         assert_eq!(t.len(), ts.len());
@@ -82,6 +83,8 @@ mod tests {
 
         // grammar::show_follow_sets(&gram.gvars);
         // grammar::show_prod_maps(&gram.gvars);
+
+        assert_eq!(gram.class, GrammarClass::LL(2));
 
         let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n lhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
         let tokens = tok.tokenize(code);

@@ -1,5 +1,4 @@
-use regex::Regex;
-use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap};
+use std::{collections::{HashMap}, fmt::Display, mem::swap};
 use crate::tokenizer::{Token, TokenTypeId};
 
 pub type GvarId = usize;
@@ -8,8 +7,6 @@ pub type ProductionId = usize;
 type ProdMapQ = (ProductionId, Vec<GvarId>, GvarId, Vec<GvarId>);
 pub type ProdMapType = (usize, HashMap<TokenTypeId, ProductionId>, Option<ProductionId>);
 
-
-#[derive(Clone, Copy, PartialEq)]
 pub enum GvarType {
     Terminal,
     NonTerminal,
@@ -54,12 +51,12 @@ pub struct Gvar {
     pub follow_set: FollowSet,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum GrammarClass {
     Undefined,
-    LL(i32),
-    LR(i32),
-    Mixed(i32),
+    LL(usize),
+    LR(usize),
+    Mixed(usize),
 }
 
 pub struct Grammar {
@@ -85,8 +82,12 @@ impl GrammarGenerator {
     /// Generate Grammar from the current configuration.
     /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
-        self.get_follow_sets();
+        // self.get_follow_sets();
         // show_follow_sets(&self.gvars);
+
+        for i in 0..self.gvars.len() {
+            self.gvars[i].follow_set = self.get_follow_set(i);
+        }
         
         for i in 0..self.gvars.len() {
             self.gvars[i].prod_map = self.get_prod_map(i);
@@ -104,49 +105,20 @@ impl GrammarGenerator {
         gram
     }
 
-    fn get_follow_sets(&mut self) {
-
-        for i in 0..self.gvars.len() {
-            let mut new_follow_set = FollowSet::new();
-            for j in 0..self.gvars.len() {
-                for rhs in &self.gvars[j].productions {
-                    for rhs_subid in 0..rhs.len() {
-                        if rhs[rhs_subid] == self.gvars[i].id {
-                            new_follow_set.add_list(&rhs[(rhs_subid+1)..], self.gvars[j].id);
-                            break;
-                        }
+    fn get_follow_set(&self, gvar_id: GvarId) -> FollowSet {
+        let mut new_follow_set = FollowSet::new();
+        for upper_gvar in &self.gvars {
+            for rhs in &upper_gvar.productions {
+                for rhs_subid in 0..rhs.len() {
+                    if rhs[rhs_subid] == gvar_id {
+                        new_follow_set.add_list(&rhs[(rhs_subid+1)..], upper_gvar.id);
+                        break;
                     }
                 }
             }
-            swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
         }
 
-        // loop {
-        //     let mut ok = true;
-
-        //     for i in 0.. self.gvars.len() {
-        //         let mut new_follow_set = FollowSet::new();
-        //         for (list, id_after) in &self.gvars[i].follow_set.lists {
-        //             match list.len() {
-        //                 0 => {
-        //                     for (list2, id_after2) in &self.gvars[*id_after].follow_set.lists {
-        //                         if !self.gvars[i].follow_set.has_list(&list2, *id_after2) {
-        //                             new_follow_set.add_list(&list2, *id_after2);
-        //                             ok = false;
-        //                         }
-        //                     }
-        //                 },
-        //                 _ => {
-        //                     new_follow_set.add_list(list, *id_after);
-        //                 }
-        //             }
-        //         }
-
-        //         swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
-        //     }
-
-        //     if ok { break; }
-        // }
+        new_follow_set
     }
 
     fn push_if(v: &mut Vec<ProdMapQ>, obj: ProdMapQ) {
@@ -165,7 +137,6 @@ impl GrammarGenerator {
         let mut q1: Vec<(ProductionId, Vec<GvarId>, GvarId, Vec<GvarId>)> = self.gvars[gvar_id].productions.iter().enumerate().map(|(i, p)| (i, p.clone(), gvar_id, Vec::new())).collect();
         let mut q2: Vec<(ProductionId, Vec<GvarId>, GvarId, Vec<GvarId>)> = Vec::new();
         let mut lookahead = 1;
-
 
         while !q1.is_empty() {
             // replace nonterminals
@@ -250,6 +221,14 @@ impl GrammarGenerator {
 
     fn get_grammar_class(&self) -> GrammarClass {
         let mut gclass = GrammarClass::Undefined;
+        let mut n = 0;
+
+        for gvar in &self.gvars {
+            for (lookahead, _, _) in &gvar.prod_map {
+                n = std::cmp::max(*lookahead, n);
+            }
+        }
+
         for gvar in &self.gvars {
             for rhs in &gvar.productions {
                 // eps
@@ -257,23 +236,21 @@ impl GrammarGenerator {
 
                 // Left-recursion
                 if rhs[0] == gvar.id {
-                    let n = 1;
                     gclass = match gclass {
                         GrammarClass::Undefined => GrammarClass::LR(n),
-                        GrammarClass::LL(m) => GrammarClass::Mixed(n),
-                        GrammarClass::LR(m) => GrammarClass::LR(n),
-                        GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
+                        GrammarClass::LL(_) => GrammarClass::Mixed(n),
+                        GrammarClass::LR(_) => GrammarClass::LR(n),
+                        GrammarClass::Mixed(_) => GrammarClass::Mixed(n),
                     }
                 }
                 
                 // Right-recursion
                 if rhs[rhs.len()-1] == gvar.id {
-                    let n = 1;
                     gclass = match gclass {
                         GrammarClass::Undefined => GrammarClass::LL(n),
-                        GrammarClass::LL(m) => GrammarClass::LL(n),
-                        GrammarClass::LR(m) => GrammarClass::Mixed(n),
-                        GrammarClass::Mixed(m) => GrammarClass::Mixed(n),
+                        GrammarClass::LL(_) => GrammarClass::LL(n),
+                        GrammarClass::LR(_) => GrammarClass::Mixed(n),
+                        GrammarClass::Mixed(_) => GrammarClass::Mixed(n),
                     }
                 }
             }
@@ -347,28 +324,22 @@ impl GrammarGenerator {
 }
 
 impl Grammar {
+    #[allow(dead_code)]
     pub fn is_ll(&self) -> bool {
         match self.class {
             GrammarClass::Undefined => false,
-            GrammarClass::LL(n) => true,
-            GrammarClass::LR(n) => false,
-            GrammarClass::Mixed(n) => true,
+            GrammarClass::LL(_) => true,
+            GrammarClass::LR(_) => false,
+            GrammarClass::Mixed(_) => true,
         }
     }
 
     pub fn is_lr(&self) -> bool {
         match self.class {
             GrammarClass::Undefined => false,
-            GrammarClass::LL(n) => false,
-            GrammarClass::LR(n) => true,
-            GrammarClass::Mixed(n) => true,
-        }
-    }
-
-    fn has_first(&self, gvar: GvarId, token: &Token) -> bool {
-        match self.gvars[gvar].gvar_type {
-            GvarType::Terminal => self.gvars[gvar].token_type.unwrap().eq(&token.token_type),
-            GvarType::NonTerminal => self.gvars[gvar].productions.iter().any(|p| self.has_first(p[0], token))
+            GrammarClass::LL(_) => false,
+            GrammarClass::LR(_) => true,
+            GrammarClass::Mixed(_) => true,
         }
     }
 
@@ -395,19 +366,9 @@ impl Grammar {
         }
         return Err("Couldn't find production");
     }
-
-    pub fn find_terminal(&self, token_id: TokenTypeId) -> Option<GvarId> {
-        for gvar in &self.gvars {
-            match gvar.token_type {
-                Some(id) => if id == token_id { return Some(gvar.id); },
-                None => ()
-            }
-        }
-        return None;
-    }
 }
 
-
+#[allow(dead_code)]
 pub fn show_follow_sets(gvars: &Vec<Gvar>) {
     for gvar in gvars {
         println!("Follow sets for {}:", gvar.name);
@@ -421,6 +382,7 @@ pub fn show_follow_sets(gvars: &Vec<Gvar>) {
     }
 }
 
+#[allow(dead_code)]
 pub fn show_prod_maps(gvars: &Vec<Gvar>) {
     for gvar in gvars {
         println!("Prod Maps for {}:", gvar.name);
@@ -458,8 +420,14 @@ impl Display for Grammar {
                 print!("\n");
             }
         }
-        for gvar in self.gvars.iter().filter(|n| n.gvar_type == GvarType::Terminal) {
-            println!("{} --> {}", gvar.name, gvar.token_type.unwrap());
+        for gvar in &self.gvars {
+            match gvar.gvar_type {
+                GvarType::Terminal => {
+                    println!("{} --> {}", gvar.name, gvar.token_type.unwrap());
+                },
+                _ => ()
+            }
+            
         }
         Ok(())
     }
@@ -467,6 +435,7 @@ impl Display for Grammar {
 
 
 
+#[allow(unused_variables)]
 #[cfg(test)]
 mod tests {
     use super::*;
