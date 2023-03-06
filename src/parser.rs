@@ -74,7 +74,7 @@ impl Parser for ParserLL {
             }
             ,
             GvarType::NonTerminal => {
-                let res_prod = grammar.find_next(self.nodes[cur_node].gvar_id, tokens.get(self.pos))
+                let res_prod = grammar.find_next(self.nodes[cur_node].gvar_id, &tokens[self.pos..])
                     .unwrap_or_else(|err| panic!("Parser error: {}, {}", err, tokens[self.pos].text));
         
                 match res_prod {

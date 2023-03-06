@@ -12,28 +12,31 @@ use parser::{Parser, ParserLL};
 
 fn define_lang() -> (Tokenizer, Grammar) {
     let tok = Tokenizer::new(
-        vec!["\n+[[:space:]]*", "->", "[[:^space:]]+"],
-        "[[:space:]&&[^\n]]+");
+        // vec!["\n+[[:space:]]*", "->", "[[:^space:]]+"],
+        vec!["->", "[[:^space:]]+"],
+        // "[[:space:]&&[^\n]]+");
+        "[[:space:]]+");
 
     let mut gram_gen = GrammarGenerator::new();
 
     gram_gen.new_nonterm("Language");
+    gram_gen.new_nonterm("Rule_List");
+    let rule_list_tail = gram_gen.new_nonterm("Rule_List_Tail");
     gram_gen.new_nonterm("Rule");
-    gram_gen.new_nonterm("RHS_Tail");
-    let rule_tail = gram_gen.new_nonterm("Rule_Tail");
-    gram_gen.new_term("Identifier", 2 as TokenTypeId);
-    gram_gen.new_term("Production_Symbol", 1 as TokenTypeId);
-    gram_gen.new_term("EndLine", 0 as TokenTypeId);
+    let rhs_tail = gram_gen.new_nonterm("RHS_Tail");
+    gram_gen.new_term("Identifier", 1 as TokenTypeId);
+    gram_gen.new_term("Production_Symbol", 0 as TokenTypeId);
+    // gram_gen.new_term("EndLine", 2 as TokenTypeId);
     gram_gen.new_term("EOF", -1 as TokenTypeId);
 
-    gram_gen.make_prod("Language", vec!["Rule", "Rule_Tail"]);
-    gram_gen.make_prod("Language", vec!["EndLine", "Rule", "Rule_Tail"]);
-    gram_gen.make_prod("Rule_Tail", vec!["Rule", "Rule_Tail"]);
-    gram_gen.make_eps(rule_tail);
+    gram_gen.make_prod("Language", vec!["Rule_List", "EOF"]);
+    gram_gen.make_prod("Rule_List", vec!["Rule", "Rule_List_Tail"]);
+    gram_gen.make_prod("Rule_List_Tail", vec!["Rule", "Rule_List_Tail"]);
+    gram_gen.make_eps(rule_list_tail);
     gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "Identifier", "RHS_Tail"]);
     gram_gen.make_prod("RHS_Tail", vec!["Identifier", "RHS_Tail"]);
-    gram_gen.make_prod("RHS_Tail", vec!["EndLine"]);
-    gram_gen.make_prod("RHS_Tail", vec!["EOF"]);
+    // gram_gen.make_prod("RHS_Tail", vec!["EndLine"]);
+    gram_gen.make_eps(rhs_tail);
     
     let gram = gram_gen.generate();
 
@@ -77,15 +80,18 @@ mod tests {
         let (mut tok, gram) = define_lang();
         let mut parser = ParserLL::new();
 
+        // grammar::show_follow_sets(&gram.gvars);
+        // grammar::show_prod_maps(&gram.gvars);
+
         let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n lhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
         let tokens = tok.tokenize(code);
         
         assert_tokens_str(&tokens[0..5], vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3"]);
-        assert_eq!(tokens[5].token_type, 0 as TokenTypeId);
-        assert_tokens_str(&tokens[6..9], vec!["lhs2", "->", "rhs2_1"]);
-        assert_eq!(tokens[9].token_type, 0 as TokenTypeId);
-        assert_tokens_str(&tokens[10..14], vec!["lhs3", "->", "rhs3_1", "rhs3_2"]);
-        assert_eq!(tokens[14].token_type, -1);
+        // assert_eq!(tokens[5].token_type, 0 as TokenTypeId);
+        assert_tokens_str(&tokens[5..8], vec!["lhs2", "->", "rhs2_1"]);
+        // assert_eq!(tokens[9].token_type, 0 as TokenTypeId);
+        assert_tokens_str(&tokens[8..12], vec!["lhs3", "->", "rhs3_1", "rhs3_2"]);
+        assert_eq!(tokens[12].token_type, -1);
         // tokenizer::display_tokens(&tokens);
 
         parser.new_node(0, None);
