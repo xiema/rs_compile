@@ -76,6 +76,7 @@ mod tests {
         }
     }
 
+    #[allow(unused_variables)]
     #[test]
     fn lang_test() {
         let (mut tok, gram) = define_lang();
@@ -97,12 +98,9 @@ mod tests {
         assert_eq!(tokens[12].token_type, -1);
         // tokenizer::display_tokens(&tokens);
 
-        match parser.parse(&gram, &tokens, 0) {
-            Ok(_) => (),
-            Err(e) => panic!("{}", e),
-        }
+        let nodes = parser.parse(&gram, &tokens, 0).unwrap();
 
-        // parser::display_ast(0, &parser, &gram, 0);
+        // parser::display_ast(0, &nodes, &gram, 0);
     }
 
     #[test]

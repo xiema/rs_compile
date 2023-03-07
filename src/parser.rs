@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::grammar::{GvarId, ProductionId, Grammar, GvarType};
 use crate::tokenizer::{Token};
 
@@ -14,99 +16,78 @@ pub struct Node {
 }
 
 pub trait Parser {
-    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>, root: GvarId) -> Result<(), &str>;
+    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str>;
 }
 
-pub struct ParserLL {
-    pos: usize,
-    nodes: Vec<Node>,
-    cur_node: NodeId,
-}
+pub struct ParserLL {}
 
 impl ParserLL {
     pub fn new() -> Self {
-        Self {
-            pos: 0,
-            nodes: Vec::new(),
-            cur_node: 0,
-        }
+        Self {}
     }
 
     /// Creates a new node, optionally associating it with a parent.
     /// Returns the new node's NodeId
-    pub fn new_node(&mut self, gvar_id: GvarId, parent: Option<NodeId>) -> NodeId {
-        let new_node_id = self.nodes.len();
-        self.nodes.push(Node {
+    pub fn new_node(&mut self, new_node_id: NodeId, gvar_id: GvarId, parent: Option<NodeId>) -> Node {
+        Node {
             id: new_node_id,
             gvar_id: gvar_id,
             prod_id: None,
             token: None,
             parent: parent,
             children: Vec::new(),
-        });
-
-        // add child to parent.children
-        match parent {
-            None => (),
-            Some(p) => {
-                self.nodes[p].children.push(new_node_id);
-            }
-        }
-
-        new_node_id
-    }
-
-    fn _parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>) -> Result<(), &str> {
-        // Grammar must not be LR
-        if grammar.is_lr() {
-            panic!("ParserLL can't parse LR grammar");
-        }
-
-        let cur_node = self.cur_node;
-        match grammar.gvars[self.nodes[cur_node].gvar_id].gvar_type {
-            GvarType::Terminal => {
-                self.nodes[cur_node].token = Some(tokens[self.pos].clone());
-                self.pos += 1;
-                // println!("Parsing {}", grammar.nodes[self.nodes[cur_node].node_def].name);
-                return Ok(());
-            }
-            ,
-            GvarType::NonTerminal => {
-                let prod_id = grammar.find_next(self.nodes[cur_node].gvar_id, &tokens[self.pos..])
-                    .unwrap_or_else(|err| panic!("Parser error: {}, {}", err, tokens[self.pos].text));
-        
-                self.nodes[cur_node].prod_id = Some(prod_id);
-                let prod = &grammar.gvars[self.nodes[cur_node].gvar_id].productions[prod_id];
-                for node_def_id in prod {
-                    self.cur_node = self.new_node(*node_def_id, Some(cur_node));
-                    match self._parse(grammar, &tokens) {
-                        Ok(_) => (),
-                        Err(e) => panic!("{}", e)
-                    }
-                }
-
-                return Ok(());
-            }
         }
     }
 }
 
 impl Parser for ParserLL {
-    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>, root: GvarId) -> Result<(), &str> {
-        self.new_node(root, None);
-        match self._parse(&grammar, &tokens) {
-            Ok(_) => Ok(()),
-            Err(err) => Err(err)
+    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
+        // Grammar must not be LR
+        if grammar.is_lr() {
+            panic!("ParserLL can't parse LR grammar");
         }
+
+        let mut nodes: Vec<Node> = Vec::new();
+        let mut q: VecDeque<NodeId> = VecDeque::new();
+        let mut pos = 0;
+        nodes.push(self.new_node(0, root, None));
+        q.push_front(0);
+
+        while !q.is_empty() {
+            let cur_node_id = q.pop_front().unwrap();
+            match grammar.gvars[nodes[cur_node_id].gvar_id].gvar_type {
+                GvarType::Terminal => {
+                    nodes[cur_node_id].token = Some(tokens[pos].clone());
+                    pos += 1;
+                },
+                GvarType::NonTerminal => {
+                    let prod_id = grammar.find_next(nodes[cur_node_id].gvar_id, &tokens[pos..])
+                        .unwrap_or_else(|err| panic!("Parser error: {}, {}", err, tokens[pos].text));
+            
+                    nodes[cur_node_id].prod_id = Some(prod_id);
+                    let prod = &grammar.gvars[nodes[cur_node_id].gvar_id].productions[prod_id];
+
+                    prod.iter().map(|node_def_id| {
+                        let new_node_id = nodes.len();
+                        nodes.push(self.new_node(new_node_id, *node_def_id, Some(cur_node_id)));
+                        nodes[cur_node_id].children.push(new_node_id);
+                        new_node_id
+                    })
+                    .rev().for_each(|new_node_id| q.push_front(new_node_id));
+                }
+            }
+        }
+
+        return Ok(nodes);
     }
 }
 
 #[allow(dead_code)]
-pub fn display_ast(node_id: NodeId, parser: &ParserLL, gram: &Grammar, level: usize) {
+pub fn display_ast(node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar, level: usize) {
     let indent = String::from("  ").repeat(level);
-    println!("{}{}", indent, gram.gvars[parser.nodes[node_id].gvar_id].name);
-    for child in &parser.nodes[node_id].children {
-        display_ast(*child, parser, gram, level + 1);
+    println!("{}{}", indent, gram.gvars[nodes[node_id].gvar_id].name);
+    for child in nodes[node_id].children.iter().rev() {
+        display_ast(*child, nodes, gram, level + 1);
     }
 }
 
@@ -118,6 +99,7 @@ mod tests {
 
     use super::*;
 
+    #[allow(unused_variables)]
     #[test]
     fn parser_test() {
         let mut tokenizer = Tokenizer::new(
@@ -151,11 +133,8 @@ mod tests {
         let tokens = tokenizer.tokenize(code);
         
         let mut parser = ParserLL::new();
-        match parser.parse(&gram, &tokens, 0) {
-            Ok(_) => (),
-            Err(_) => (),
-        };
+        let nodes = parser.parse(&gram, &tokens, 0).unwrap();
 
-        // display_ast(0, &parser, &gram, 0);
+        // display_ast(0, &nodes, &gram, 0);
     }
 }
