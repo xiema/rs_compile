@@ -1,11 +1,10 @@
-use std::{collections::{HashMap}, fmt::Display, mem::swap};
+use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap};
 use crate::tokenizer::{Token, TokenTypeId};
 
 pub type GvarId = usize;
 pub type ProductionId = usize;
 
-type ProdMapQ = (ProductionId, Vec<GvarId>, GvarId, Vec<GvarId>);
-pub type ProdMapType = (usize, HashMap<TokenTypeId, ProductionId>, Option<ProductionId>);
+pub type ProdMap = Vec<(usize, HashMap<TokenTypeId, ProductionId>, Option<ProductionId>)>;
 
 pub enum GvarType {
     Terminal,
@@ -44,10 +43,9 @@ pub struct Gvar {
     pub gvar_type: GvarType,
     pub name: String,
     token_type: Option<TokenTypeId>,
-    eps: bool,
 
     pub productions: Vec<Vec<GvarId>>,
-    pub prod_map: Vec<ProdMapType>,
+    pub prod_map: ProdMap,
     pub follow_set: FollowSet,
 }
 
@@ -107,6 +105,7 @@ impl GrammarGenerator {
 
     fn get_follow_sets(&mut self) {
 
+        // add initial content of follow sets
         for i in 0..self.gvars.len() {
             let mut new_follow_set = FollowSet::new();
             for j in 0..self.gvars.len() {
@@ -122,31 +121,30 @@ impl GrammarGenerator {
             swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
         }
 
+        // replace empty follow list in follow sets until none remain
         loop {
-            let mut ok = true;
+            let mut modified = false;
 
             for i in 0.. self.gvars.len() {
                 let mut new_follow_set = FollowSet::new();
-                for (list, id_after) in &self.gvars[i].follow_set.lists {
-                    match list.len() {
-                        0 => {
-                            for (list2, id_after2) in &self.gvars[*id_after].follow_set.lists {
-                                if !self.gvars[i].follow_set.has_list(&list2, *id_after2) {
-                                    new_follow_set.add_list(&list2, *id_after2);
-                                    ok = false;
-                                }
+                for (follow_list, id_after) in &self.gvars[i].follow_set.lists {
+                    if follow_list.len() == 0 {
+                        for (list2, id_after2) in &self.gvars[*id_after].follow_set.lists {
+                            if !self.gvars[i].follow_set.has_list(&list2, *id_after2) {
+                                new_follow_set.add_list(&list2, *id_after2);
+                                modified = true;
                             }
-                        },
-                        _ => {
-                            new_follow_set.add_list(list, *id_after);
                         }
+                    }
+                    else {
+                        new_follow_set.add_list(follow_list, *id_after);
                     }
                 }
 
                 swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
             }
 
-            if ok { break; }
+            if !modified { break; }
         }
     }
 
@@ -168,98 +166,108 @@ impl GrammarGenerator {
         new_follow_set
     }
 
-    fn push_if(v: &mut Vec<ProdMapQ>, obj: ProdMapQ) {
-        if !v.contains(&obj) {
-            v.push(obj);
-        }
-    }
-
-    fn get_prod_map(&self, gvar_id: GvarId) -> Vec<ProdMapType> {
-        let mut prod_map: Vec<ProdMapType> = Vec::new();
+    fn get_prod_map(&self, gvar_id: GvarId) -> ProdMap {
+        let mut prod_map: ProdMap = Vec::new();
 
         if self.gvars[gvar_id].productions.len() == 1 {
             return prod_map;
         }
         
-        let mut q1: Vec<(ProductionId, Vec<GvarId>, GvarId, Vec<GvarId>)> = self.gvars[gvar_id].productions.iter().enumerate().map(|(i, p)| (i, p.clone(), gvar_id, Vec::new())).collect();
-        let mut q2: Vec<(ProductionId, Vec<GvarId>, GvarId, Vec<GvarId>)> = Vec::new();
+        // Tuple of (Production Id, RHS Gvars List, Parent Node Gvar)
+        // RHS Gvars (converted to corresponding Tokens) and Production Ids are inspected to find if a unique token 
+        //   can be found at a particular lookahead position.
+        // Parent Node Gvar is used to extend the RHS Gvar Vector if the lookahead exceeds the current length
+        let mut s1: HashSet<(ProductionId, Vec<GvarId>, GvarId)> = self.gvars[gvar_id].productions.iter().enumerate().map(|(i, p)| (i, p.clone(), gvar_id)).collect();
+        let mut s2: HashSet<(ProductionId, Vec<GvarId>, GvarId)> = HashSet::new();
         let mut lookahead = 1;
 
-        while !q1.is_empty() {
-            // replace nonterminals
+        while !s1.is_empty() {
+            
+            // ensure at least one terminal at front of every rhs
             loop {
-                let mut ok = true;
-                for (prod_id, prod, id_after, seen_ids) in &mut q1 {
-                    match prod.len() {
-                        0 => {
-                            // if !seen_ids.contains(id_after) {
-                            seen_ids.push(*id_after);
-                            for (list, new_id_after) in &self.gvars[*id_after].follow_set.lists {
-                                Self::push_if(&mut q2, (*prod_id, list.clone(), *new_id_after, seen_ids.clone()));
-                                ok = false;
-                            }
-                            // }
-                        },
-                        _ => {
-                            match self.gvars[prod[0]].gvar_type {
-                                GvarType::NonTerminal => {
-                                    for sub_prod in &self.gvars[prod[0]].productions {
-                                        let mut new_prod = sub_prod.clone();
-                                        new_prod.extend_from_slice(&prod[1..]);
-                                        Self::push_if(&mut q2, (*prod_id, new_prod, *id_after, seen_ids.clone()));
-                                    }
-                                    ok = false;
-                                },
-                                GvarType::Terminal => {
-                                    Self::push_if(&mut q2, (*prod_id, prod.clone(), *id_after, seen_ids.clone()));
+                let mut modified = false;
+
+                for (prod_id, rhs, id_after) in &s1 {
+                    if rhs.len() == 0 {
+                        // replace empty rhs with follow set
+                        for (list, new_id_after) in &self.gvars[*id_after].follow_set.lists {
+                            s2.insert((*prod_id, list.clone(), *new_id_after));
+                            modified = true;
+                        }
+                    }
+                    else {
+                        match self.gvars[rhs[0]].gvar_type {
+                            GvarType::NonTerminal => {
+                                // replace nonterminals at front of rhs with corresponding productions
+                                for sub_prod in &self.gvars[rhs[0]].productions {
+                                    let mut new_prod = sub_prod.clone();
+                                    new_prod.extend_from_slice(&rhs[1..]);
+                                    s2.insert((*prod_id, new_prod, *id_after));
                                 }
+                                modified = true;
+                            },
+                            GvarType::Terminal => {
+                                // retain terminals
+                                s2.insert((*prod_id, rhs.clone(), *id_after));
                             }
-                        },
+                        }
                     }
                 }
 
-                swap(&mut q1, &mut q2);
-                q2.clear();
-                if ok { break; }
+                swap(&mut s1, &mut s2);
+                s2.clear();
+                if !modified { break; }
             }
 
-            let mut count: HashMap<GvarId, Vec<ProductionId>> = HashMap::new();
-            for (prod_id, prod, _, _) in &q1 {
-                if !count.contains_key(&prod[0]) {
-                    count.insert(prod[0], Vec::new());
+
+            // map of terminals to the possible productions if the terminal is seen at the current position
+            let mut terminal_to_prod: HashMap<GvarId, Vec<ProductionId>> = HashMap::new();
+            for (prod_id, rhs, _) in &s1 {
+                if !terminal_to_prod.contains_key(&rhs[0]) {
+                    terminal_to_prod.insert(rhs[0], Vec::new());
                 }
-                if !count[&prod[0]].contains(prod_id) {
-                    count.get_mut(&prod[0]).unwrap().push(*prod_id);
+                if !terminal_to_prod[&rhs[0]].contains(prod_id) {
+                    terminal_to_prod.get_mut(&rhs[0]).unwrap().push(*prod_id);
                 }
             }
 
-            let mut cur_map: HashMap<TokenTypeId, ProductionId> = HashMap::new();
-            for (gvar_id, prod_ids) in &count {
+            // possible prod map at this lookahead position
+            let mut new_map: HashMap<TokenTypeId, ProductionId> = HashMap::new();
+            for (gvar_id, prod_ids) in &terminal_to_prod {
+                // skip if more than 1 production possible with this token at this position
                 if prod_ids.len() > 1 { continue; }
+
+                // add this token-production pair to prod_map at this lookahead position
                 let prod_id = prod_ids[0];
                 let token_id = self.gvars[*gvar_id].token_type.unwrap();
-                cur_map.insert(token_id, prod_id);
-                q1.retain(|(id, p, _, _)|
+                new_map.insert(token_id, prod_id);
+
+                // remove all similar productions (same lookahead token and production id, but possibly different production trees/routes)
+                s1.retain(|(id, p, _)|
                     *id != prod_id
                     || self.gvars[p[0]].token_type.is_none()
                     || self.gvars[p[0]].token_type.unwrap() != token_id
                 );
             }
             
-            if q1.len() > 0 && q1.iter().all(|(prod_id, _, _, _)| *prod_id == q1[0].0) {
-                prod_map.push((lookahead, cur_map, Some(q1[0].0)));
-                q1.clear();
+            let last = s1.iter().last();
+            if s1.len() > 0 && s1.iter().all(|(prod_id, _, _)| *prod_id == last.unwrap().0) {
+                // if all remaining productions are the same, add an "else" clause
+                prod_map.push((lookahead, new_map, Some(last.unwrap().0)));
+                s1.clear();
             }
-            else if cur_map.len() > 0 {
-                prod_map.push((lookahead, cur_map, None));
+            else if !new_map.is_empty() {
+                // add the prod map if something was inserted
+                prod_map.push((lookahead, new_map, None));
             }
 
-            for (prod_id, prod, id_after, seen_ids) in &q1 {
-                q2.push((*prod_id, Vec::from(&prod[1..]), *id_after, seen_ids.clone()));
+            // advance all rhs lists by 1 token
+            for (prod_id, rhs, id_after) in &s1 {
+                s2.insert((*prod_id, Vec::from(&rhs[1..]), *id_after));
             }
             
-            swap(&mut q1, &mut q2);
-            q2.clear();
+            swap(&mut s1, &mut s2);
+            s2.clear();
             lookahead += 1;
         }
 
@@ -314,7 +322,6 @@ impl GrammarGenerator {
             gvar_type: GvarType::NonTerminal,
             name: String::from(name),
             token_type: None,
-            eps: false,
 
             productions: Vec::new(),
             prod_map: Vec::new(),
@@ -334,7 +341,6 @@ impl GrammarGenerator {
             gvar_type: GvarType::Terminal,
             name: String::from(name),
             token_type: Some(token_type),
-            eps: false,
 
             productions: Vec::new(),
             prod_map: Vec::new(),
@@ -356,7 +362,6 @@ impl GrammarGenerator {
 
     pub fn make_eps(&mut self, def_id: GvarId) -> ProductionId {
         // self.gvars[def_id].productions.push(vec![]);
-        self.gvars[def_id].eps = true;
         self.new_prod(def_id, vec![])
     }
 
@@ -390,9 +395,9 @@ impl Grammar {
         }
     }
 
-    pub fn find_next(&self, gvar: GvarId, tokens: &[Token]) -> Result<Option<ProductionId>, &str> {
+    pub fn find_next(&self, gvar: GvarId, tokens: &[Token]) -> Result<ProductionId, &str> {
         if self.gvars[gvar].productions.len() == 1 {
-            return Ok(Some(0));
+            return Ok(0);
         }
 
         if tokens.len() == 0 { panic!("Tokens length is 0!"); }
@@ -401,15 +406,12 @@ impl Grammar {
             for (lookahead, map, else_id) in &self.gvars[gvar].prod_map {
                 if *lookahead > i + 1 { break; }
                 if *lookahead == i + 1 && map.contains_key(&token.token_type) {
-                    return Ok(Some(map[&token.token_type]));
+                    return Ok(map[&token.token_type]);
                 }
                 if else_id.is_some() {
-                    return Ok(*else_id);
+                    return Ok(else_id.unwrap());
                 }
             }
-        }
-        if self.gvars[gvar].eps {
-            return Ok(None);
         }
         return Err("Couldn't find production");
     }
@@ -519,10 +521,10 @@ mod tests {
 
         let mut vec: Vec<Token>;
         vec = vec![Token {text: String::from("4"), token_type: tok_term}];
-        assert_eq!(gram.find_next(expr, &vec).unwrap().unwrap(), prod3);
+        assert_eq!(gram.find_next(expr, &vec).unwrap(), prod3);
         vec = vec![Token {text: String::from("+"), token_type: tok_op}];
-        assert_eq!(gram.find_next(expr_tail, &vec).unwrap().unwrap(), prod4);
+        assert_eq!(gram.find_next(expr_tail, &vec).unwrap(), prod4);
         vec = vec![tok_eof];
-        assert_eq!(gram.find_next(expr_tail, &vec).unwrap(), Some(expr_tail_eps));
+        assert_eq!(gram.find_next(expr_tail, &vec).unwrap(), expr_tail_eps);
     }
 }

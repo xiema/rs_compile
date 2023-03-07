@@ -14,7 +14,7 @@ pub struct Node {
 }
 
 pub trait Parser {
-    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>) -> Result<(), &str>;
+    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>, root: GvarId) -> Result<(), &str>;
 }
 
 pub struct ParserLL {
@@ -55,10 +55,8 @@ impl ParserLL {
 
         new_node_id
     }
-}
 
-impl Parser for ParserLL {
-    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>) -> Result<(), &str> {
+    fn _parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>) -> Result<(), &str> {
         // Grammar must not be LR
         if grammar.is_lr() {
             panic!("ParserLL can't parse LR grammar");
@@ -74,30 +72,31 @@ impl Parser for ParserLL {
             }
             ,
             GvarType::NonTerminal => {
-                let res_prod = grammar.find_next(self.nodes[cur_node].gvar_id, &tokens[self.pos..])
+                let prod_id = grammar.find_next(self.nodes[cur_node].gvar_id, &tokens[self.pos..])
                     .unwrap_or_else(|err| panic!("Parser error: {}, {}", err, tokens[self.pos].text));
         
-                match res_prod {
-                    Some(prod_id) => {
-                        // expand lhs to rhs
-                        self.nodes[cur_node].prod_id = Some(prod_id);
-                        let prod = &grammar.gvars[self.nodes[cur_node].gvar_id].productions[prod_id];
-                        for node_def_id in prod {
-                            self.cur_node = self.new_node(*node_def_id, Some(cur_node));
-                            match self.parse(grammar, &tokens) {
-                                Ok(_) => (),
-                                Err(e) => panic!("{}", e)
-                            }
-                        }
-                    }
-                    ,
-                    None => {
-                        // epsilon production
+                self.nodes[cur_node].prod_id = Some(prod_id);
+                let prod = &grammar.gvars[self.nodes[cur_node].gvar_id].productions[prod_id];
+                for node_def_id in prod {
+                    self.cur_node = self.new_node(*node_def_id, Some(cur_node));
+                    match self._parse(grammar, &tokens) {
+                        Ok(_) => (),
+                        Err(e) => panic!("{}", e)
                     }
                 }
 
                 return Ok(());
             }
+        }
+    }
+}
+
+impl Parser for ParserLL {
+    fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>, root: GvarId) -> Result<(), &str> {
+        self.new_node(root, None);
+        match self._parse(&grammar, &tokens) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(err)
         }
     }
 }
@@ -122,24 +121,24 @@ mod tests {
     #[test]
     fn parser_test() {
         let mut tokenizer = Tokenizer::new(
-            vec![";", "[[:digit:]]+", "[-+*/]"],
+            vec!["[[:digit:]]+", "[-+*/]"],
             "[[:space:]]");
 
         let mut gram_gen = GrammarGenerator::new();
         
         gram_gen.new_nonterm("Program");
-        gram_gen.new_nonterm("Statement");
-        let stat_tail = gram_gen.new_nonterm("Statement_Tail");
+        gram_gen.new_nonterm("Expression_List");
+        let expr_list_tail = gram_gen.new_nonterm("Expression_List_Tail");
         gram_gen.new_nonterm("Expression");
         let expr_tail = gram_gen.new_nonterm("Expression_Tail");
-        gram_gen.new_term("Term", 1 as TokenTypeId);
-        gram_gen.new_term("Operator", 2 as TokenTypeId);
-        gram_gen.new_term("End Statement", 0 as TokenTypeId);
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
 
-        gram_gen.make_prod("Program", vec!["Statement", "Statement_Tail"]);
-        gram_gen.make_prod("Statement_Tail", vec!["Statement", "Statement_Tail"]);
-        gram_gen.make_eps(stat_tail);
-        gram_gen.make_prod("Statement", vec!["Expression", "End Statement"]);
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression", "Expression_List_Tail"]);
+        gram_gen.make_prod("Expression_List_Tail", vec!["Expression", "Expression_List_Tail"]);
+        gram_gen.make_eps(expr_list_tail);
         gram_gen.make_prod("Expression", vec!["Term", "Expression_Tail"]);
         gram_gen.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
         gram_gen.make_eps(expr_tail);
@@ -148,14 +147,15 @@ mod tests {
 
         // println!("{}", gram);
 
-        let code = "1 + 1; 2 + 2 ;";
+        let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
         let tokens = tokenizer.tokenize(code);
         
         let mut parser = ParserLL::new();
-        parser.new_node(0, None);
-        match parser.parse(&gram, &tokens) {
+        match parser.parse(&gram, &tokens, 0) {
             Ok(_) => (),
             Err(_) => (),
         };
+
+        // display_ast(0, &parser, &gram, 0);
     }
 }

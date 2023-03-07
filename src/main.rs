@@ -56,7 +56,7 @@ fn main() {
     let mut parser = ParserLL::new();
 
     let tokens = tokenizer.tokenize(asm.as_str());
-    match parser.parse(&gram, &tokens) {
+    match parser.parse(&gram, &tokens, 0) {
         Ok(_) => (),
         Err(_) => (),
     }
@@ -97,8 +97,7 @@ mod tests {
         assert_eq!(tokens[12].token_type, -1);
         // tokenizer::display_tokens(&tokens);
 
-        parser.new_node(0, None);
-        match parser.parse(&gram, &tokens) {
+        match parser.parse(&gram, &tokens, 0) {
             Ok(_) => (),
             Err(e) => panic!("{}", e),
         }
@@ -114,8 +113,7 @@ mod tests {
         
         let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2 ->";
         let tokens = tok.tokenize(code);
-        parser.new_node(0, None);
-        match parser.parse(&gram, &tokens) {
+        match parser.parse(&gram, &tokens, 0) {
             Ok(_) => (),
             Err(e) => panic!("{}", e),
         }
