@@ -11,30 +11,20 @@ pub enum GvarType {
     NonTerminal,
 }
 
-pub struct FollowSet {
-    lists: Vec<(Vec<GvarId>, GvarId)>,
+type FollowSet = Vec<(Vec<GvarId>, GvarId)>;
+
+fn has_follow(follow_set: &FollowSet, list1: &[GvarId], id1: GvarId) -> bool {
+    for (list2, id2) in follow_set {
+        if list1.eq(list2) && id1.eq(id2) {
+            return true;
+        }
+    }
+    return false;
 }
 
-impl FollowSet {
-    fn new() -> Self {
-        Self {
-            lists: Vec::new(),
-        }
-    }
-
-    fn has_list(&self, list1: &[GvarId], id1: GvarId) -> bool {
-        for (list2, id2) in &self.lists {
-            if list1.eq(list2) && id1.eq(id2) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    fn add_list(&mut self, list: &[GvarId], id: GvarId) {
-        if !self.has_list(list, id) {
-            self.lists.push((Vec::from(list), id));
-        }
+fn add_follow(follow_set: &mut FollowSet, list: &[GvarId], id: GvarId) {
+    if !has_follow(follow_set, list, id) {
+        follow_set.push((Vec::from(list), id));
     }
 }
 
@@ -112,7 +102,7 @@ impl GrammarGenerator {
                 for rhs in &self.gvars[j].productions {
                     for rhs_subid in 0..rhs.len() {
                         if rhs[rhs_subid] == self.gvars[i].id {
-                            new_follow_set.add_list(&rhs[(rhs_subid+1)..], self.gvars[j].id);
+                            add_follow(&mut new_follow_set, &rhs[(rhs_subid+1)..], self.gvars[j].id);
                             break;
                         }
                     }
@@ -127,17 +117,17 @@ impl GrammarGenerator {
 
             for i in 0.. self.gvars.len() {
                 let mut new_follow_set = FollowSet::new();
-                for (follow_list, id_after) in &self.gvars[i].follow_set.lists {
+                for (follow_list, id_after) in &self.gvars[i].follow_set {
                     if follow_list.len() == 0 {
-                        for (list2, id_after2) in &self.gvars[*id_after].follow_set.lists {
-                            if !self.gvars[i].follow_set.has_list(&list2, *id_after2) {
-                                new_follow_set.add_list(&list2, *id_after2);
+                        for (list2, id_after2) in &self.gvars[*id_after].follow_set {
+                            if !has_follow(&self.gvars[i].follow_set, &list2, *id_after2) {
+                                add_follow(&mut new_follow_set, &list2, *id_after2);
                                 modified = true;
                             }
                         }
                     }
                     else {
-                        new_follow_set.add_list(follow_list, *id_after);
+                        add_follow(&mut new_follow_set, follow_list, *id_after);
                     }
                 }
 
@@ -156,7 +146,7 @@ impl GrammarGenerator {
             for rhs in &upper_gvar.productions {
                 for rhs_subid in 0..rhs.len() {
                     if rhs[rhs_subid] == gvar_id {
-                        new_follow_set.add_list(&rhs[(rhs_subid+1)..], upper_gvar.id);
+                        add_follow(&mut new_follow_set, &rhs[(rhs_subid+1)..], upper_gvar.id);
                         break;
                     }
                 }
@@ -190,7 +180,7 @@ impl GrammarGenerator {
                 for (prod_id, rhs, id_after) in &s1 {
                     if rhs.len() == 0 {
                         // replace empty rhs with follow set
-                        for (list, new_id_after) in &self.gvars[*id_after].follow_set.lists {
+                        for (list, new_id_after) in &self.gvars[*id_after].follow_set {
                             s2.insert((*prod_id, list.clone(), *new_id_after));
                             modified = true;
                         }
@@ -360,9 +350,8 @@ impl GrammarGenerator {
         new_prod_id
     }
 
-    pub fn make_eps(&mut self, def_id: GvarId) -> ProductionId {
-        // self.gvars[def_id].productions.push(vec![]);
-        self.new_prod(def_id, vec![])
+    pub fn make_eps(&mut self, lhs_str: &str) -> ProductionId {
+        self.make_prod(lhs_str, vec![])
     }
 
     pub fn make_prod(&mut self, lhs_str: &str, rhs_str: Vec<&str>) -> ProductionId {
@@ -421,7 +410,7 @@ impl Grammar {
 pub fn show_follow_sets(gvars: &Vec<Gvar>) {
     for gvar in gvars {
         println!("Follow sets for {}:", gvar.name);
-        for (list, id) in &gvar.follow_set.lists {
+        for (list, id) in &gvar.follow_set {
             for l in list {
                 print!("{} ", gvars[*l].name);
             }
@@ -508,10 +497,10 @@ mod tests {
         let prod0 = gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
         let prod1 = gram_gen.make_prod("Expression_List", vec!["Expression", "Expression_List_Tail"]);
         let prod2 = gram_gen.make_prod("Expression_List_Tail", vec!["Expression", "Expression_List_Tail"]);
-        let expr_list_tail_eps = gram_gen.make_eps(expr_list_tail);
+        let expr_list_tail_eps = gram_gen.make_eps("Expression_List_Tail");
         let prod3 = gram_gen.make_prod("Expression", vec!["Term", "Expression_Tail"]);
         let prod4 = gram_gen.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
-        let expr_tail_eps = gram_gen.make_eps(expr_tail);
+        let expr_tail_eps = gram_gen.make_eps("Expression_Tail");
 
         let gram = gram_gen.generate();
 

@@ -110,9 +110,9 @@ mod tests {
         
         gram_gen.new_nonterm("Program");
         gram_gen.new_nonterm("Expression_List");
-        let expr_list_tail = gram_gen.new_nonterm("Expression_List_Tail");
+        gram_gen.new_nonterm("Expression_List_Tail");
         gram_gen.new_nonterm("Expression");
-        let expr_tail = gram_gen.new_nonterm("Expression_Tail");
+        gram_gen.new_nonterm("Expression_Tail");
         gram_gen.new_term("Term", 0 as TokenTypeId);
         gram_gen.new_term("Operator", 1 as TokenTypeId);
         gram_gen.new_term("EOF", -1 as TokenTypeId);
@@ -120,10 +120,10 @@ mod tests {
         gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
         gram_gen.make_prod("Expression_List", vec!["Expression", "Expression_List_Tail"]);
         gram_gen.make_prod("Expression_List_Tail", vec!["Expression", "Expression_List_Tail"]);
-        gram_gen.make_eps(expr_list_tail);
+        gram_gen.make_eps("Expression_List_Tail");
         gram_gen.make_prod("Expression", vec!["Term", "Expression_Tail"]);
         gram_gen.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
-        gram_gen.make_eps(expr_tail);
+        gram_gen.make_eps("Expression_Tail");
 
         let gram = gram_gen.generate();
 
