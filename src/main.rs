@@ -103,7 +103,7 @@ mod tests {
             Err(e) => panic!("{}", e),
         }
 
-        parser::display_ast(0, &parser, &gram, 0);
+        // parser::display_ast(0, &parser, &gram, 0);
     }
 
     #[test]

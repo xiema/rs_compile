@@ -146,7 +146,7 @@ mod tests {
 
         let gram = gram_gen.generate();
 
-        println!("{}", gram);
+        // println!("{}", gram);
 
         let code = "1 + 1; 2 + 2 ;";
         let tokens = tokenizer.tokenize(code);

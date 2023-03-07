@@ -82,12 +82,12 @@ impl GrammarGenerator {
     /// Generate Grammar from the current configuration.
     /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
-        // self.get_follow_sets();
+        self.get_follow_sets();
         // show_follow_sets(&self.gvars);
 
-        for i in 0..self.gvars.len() {
-            self.gvars[i].follow_set = self.get_follow_set(i);
-        }
+        // for i in 0..self.gvars.len() {
+        //     self.gvars[i].follow_set = self.get_follow_set(i);
+        // }
         
         for i in 0..self.gvars.len() {
             self.gvars[i].prod_map = self.get_prod_map(i);
@@ -105,6 +105,53 @@ impl GrammarGenerator {
         gram
     }
 
+    fn get_follow_sets(&mut self) {
+
+        for i in 0..self.gvars.len() {
+            let mut new_follow_set = FollowSet::new();
+            for j in 0..self.gvars.len() {
+                for rhs in &self.gvars[j].productions {
+                    for rhs_subid in 0..rhs.len() {
+                        if rhs[rhs_subid] == self.gvars[i].id {
+                            new_follow_set.add_list(&rhs[(rhs_subid+1)..], self.gvars[j].id);
+                            break;
+                        }
+                    }
+                }
+            }
+            swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
+        }
+
+        loop {
+            let mut ok = true;
+
+            for i in 0.. self.gvars.len() {
+                let mut new_follow_set = FollowSet::new();
+                for (list, id_after) in &self.gvars[i].follow_set.lists {
+                    match list.len() {
+                        0 => {
+                            for (list2, id_after2) in &self.gvars[*id_after].follow_set.lists {
+                                if !self.gvars[i].follow_set.has_list(&list2, *id_after2) {
+                                    new_follow_set.add_list(&list2, *id_after2);
+                                    ok = false;
+                                }
+                            }
+                        },
+                        _ => {
+                            new_follow_set.add_list(list, *id_after);
+                        }
+                    }
+                }
+
+                swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
+            }
+
+            if ok { break; }
+        }
+    }
+
+    #[allow(dead_code)]
+    #[deprecated]
     fn get_follow_set(&self, gvar_id: GvarId) -> FollowSet {
         let mut new_follow_set = FollowSet::new();
         for upper_gvar in &self.gvars {
@@ -145,13 +192,13 @@ impl GrammarGenerator {
                 for (prod_id, prod, id_after, seen_ids) in &mut q1 {
                     match prod.len() {
                         0 => {
-                            if !seen_ids.contains(id_after) {
-                                seen_ids.push(*id_after);
-                                for (list, new_id_after) in &self.gvars[*id_after].follow_set.lists {
-                                    Self::push_if(&mut q2, (*prod_id, list.clone(), *new_id_after, seen_ids.clone()));
-                                    ok = false;
-                                }
+                            // if !seen_ids.contains(id_after) {
+                            seen_ids.push(*id_after);
+                            for (list, new_id_after) in &self.gvars[*id_after].follow_set.lists {
+                                Self::push_if(&mut q2, (*prod_id, list.clone(), *new_id_after, seen_ids.clone()));
+                                ok = false;
                             }
+                            // }
                         },
                         _ => {
                             match self.gvars[prod[0]].gvar_type {
