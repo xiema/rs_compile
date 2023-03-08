@@ -15,7 +15,7 @@ pub fn define_lang() -> (Tokenizer, Grammar) {
         // Production Symbol
             "->",
         // Symbol/Identifier
-            "[[:^space:]]+",
+            "[[:word:]]+",
     ],
     // Ignore characters
     "[[:space:]]+");
@@ -71,7 +71,7 @@ mod tests {
         assert_eq!(gram.class, GrammarClass::LL(2));
 
         let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n lhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
-        let tokens = tok.tokenize(code);
+        let tokens = tok.tokenize(code).unwrap();
         
         assert_tokens_str(&tokens[0..5], vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3"]);
         assert_tokens_str(&tokens[5..8], vec!["lhs2", "->", "rhs2_1"]);
@@ -91,7 +91,7 @@ mod tests {
         let mut parser = ParserLL::new();
         
         let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2 ->";
-        let tokens = tok.tokenize(code);
+        let tokens = tok.tokenize(code).unwrap();
         match parser.parse(&gram, &tokens, 0) {
             Ok(_) => (),
             Err(e) => panic!("{}", e),

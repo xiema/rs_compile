@@ -1,6 +1,9 @@
-use std::cmp;
-
 use regex::Regex;
+
+#[derive(Debug, Clone)]
+pub enum TokenizationErr {
+    UnrecognizedChar(usize),
+}
 
 enum State {
     START,
@@ -68,29 +71,40 @@ impl Tokenizer {
         return false;
     }
 
-    pub fn tokenize(&mut self, in_str: &str) -> Vec<Token> {
+    pub fn tokenize(&mut self, in_str: &str) -> Result<Vec<Token>, TokenizationErr> {
         let mut tokens: Vec<Token> = Vec::new();
-        let s = in_str.trim();
+        let re_ws1 = Regex::new("^[[:space:]]*").unwrap();
+        let re_ws2 = Regex::new("[[:space:]]*$").unwrap();
+        let start = match re_ws1.find(in_str) {
+            Some(m) => m.end(),
+            None => 0,
+        };
+        let end = match re_ws2.find(in_str) {
+            Some(m) => m.start(),
+            None => in_str.len(),
+        };
 
-        while self.pos < s.len() {
+        self.pos = start;
+
+        while self.pos < end {
             let ok = match self.state {
-            State::START => self.match_state(State::TOKEN, &s[self.pos..], &mut tokens)
-                            || self.match_state(State::IGNORE, &s[self.pos..], &mut tokens)
+            State::START => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
+                            || self.match_state(State::IGNORE, &in_str[self.pos..], &mut tokens)
             ,
-            State::TOKEN => self.match_state(State::TOKEN, &s[self.pos..], &mut tokens)
-                            || self.match_state(State::IGNORE, &s[self.pos..], &mut tokens)
+            State::TOKEN => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
+                            || self.match_state(State::IGNORE, &in_str[self.pos..], &mut tokens)
             ,
-            State::IGNORE => self.match_state(State::TOKEN, &s[self.pos..], &mut tokens)
+            State::IGNORE => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
             };
             if !ok {
-                panic!("Tokenization error at char {}:\n{}", self.pos, &s[self.pos..cmp::min(s.len(), self.pos + 20)]);
+                return Err(TokenizationErr::UnrecognizedChar(self.pos));
             }
         }
 
         // TODO: end with marker?
         tokens.push(Token::new("", -1));
 
-        return tokens;
+        return Ok(tokens);
     }
 }
 
@@ -115,7 +129,7 @@ mod tests {
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
 
-        let tokens = tokenizer.tokenize(code);
+        let tokens = tokenizer.tokenize(code).unwrap();
         
         // display_tokens(&tokens);
         
@@ -129,7 +143,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn tokenizer_unhandled_char() {
         let mut tokenizer = Tokenizer::new(
         vec!["\n+[[:space:]]*", "([[:^space:]&&[^,]]+)"], 
@@ -137,6 +150,6 @@ mod tests {
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
         
-        let tokens = tokenizer.tokenize(code);
+        assert!(matches!(tokenizer.tokenize(code), Err(TokenizationErr::UnrecognizedChar(e)) if e == 13));
     }
 }

@@ -134,7 +134,7 @@ mod tests {
         // println!("{}", gram);
 
         let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
-        let tokens = tokenizer.tokenize(code);
+        let tokens = tokenizer.tokenize(code).unwrap();
         
         let mut parser = ParserLL::new();
         let nodes = parser.parse(&gram, &tokens, 0).unwrap();
