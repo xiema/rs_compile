@@ -10,6 +10,10 @@ Tokenizes a sequence of characters (String) using 2 states recognized using regu
 
 Outputs a Token sequence as a Vector. Token struct contains the original token string slice and also a TokenTypeId representing the Token type. The TokenTypeId corresponds to the index of the Token pattern given to the Tokenizer constructor.
 
+TOKENS may be SINGLE or SURROUND types
+1. SINGLE: captures the whole pattern at once
+2. SURROUND: finds the begin and end pattern, and capturing them and everything in between, with optional escape characters
+
 General rules are:
 1. TOKENS can appear consecutively, or with IGNORE chars in between them. IGNORE chars are discarded.
 2. Whitespace is trimmed from start and end of the input string automatically
@@ -17,11 +21,9 @@ General rules are:
 
 An EOF Token is automatically added to the end of the Token sequence. This EOF Token has a TokenTypeId of -1. The TokenTypeIds are also used subsequently in parsing the token sequence.
 
-The given regexes must be able to handle all chars in the input to tokenize successfully. For well-defined behavior, the IGNORE regex should be defined to consume all chars in between valid tokens.
+The given regexes must be able to handle all chars in the input to tokenize successfully (except for inner characters of SURROUND tokens). For well-defined behavior, the IGNORE regex should be defined to consume all chars in between valid tokens.
 
 To do:
-> Recognize surrounds (parentheses, quotes, etc.)
-> Ignore comments
 > Configure trimming of whitespace
 
 

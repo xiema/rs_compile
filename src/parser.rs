@@ -106,9 +106,12 @@ mod tests {
     #[allow(unused_variables)]
     #[test]
     fn parser_test() {
-        let mut tokenizer = Tokenizer::new(
-            vec!["[[:digit:]]+", "[-+*/]"],
-            "[[:space:]]");
+        let mut tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[[:digit:]]+"),
+            TokenPattern::Single("[-+*/]")
+        ],
+            TokenPattern::Single("[[:space:]]")
+        );
 
         let mut gram_gen = GrammarGenerator::new();
         
