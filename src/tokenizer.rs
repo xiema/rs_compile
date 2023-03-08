@@ -5,12 +5,6 @@ pub enum TokenizationErr {
     UnrecognizedChar(usize),
 }
 
-enum State {
-    START,
-    TOKEN,
-    IGNORE,
-}
-
 pub type TokenTypeId = i32;
 
 #[derive(Clone)]
@@ -31,12 +25,10 @@ impl Token {
 pub struct Tokenizer {
     re_ignore: Regex,
     token_matchers: Vec<Regex>,
-    pos: usize,
-    state: State,
 }
 
 impl Tokenizer {
-    pub fn make_re(s: &str) -> Regex {
+    fn make_re(s: &str) -> Regex {
         Regex::new(format!("^({})", s).as_str()).unwrap()
     }
 
@@ -44,31 +36,7 @@ impl Tokenizer {
         Self {
             re_ignore: Regex::new(Tokenizer::make_re(ign).as_str()).unwrap(),
             token_matchers: tok.iter().map(|s| Tokenizer::make_re(s)).collect(),
-            pos: 0,
-            state: State::START,
         }
-    }
-
-    fn match_state(&mut self, next: State, seq: &str, tokens: &mut Vec<Token>) -> bool {
-        match next {
-            State::START => panic!("Can't transition to START"),
-            State::TOKEN => {
-                for i in 0..self.token_matchers.len() {
-                    if let Some(m) = self.token_matchers[i].find(seq) {
-                        self.pos += m.end();
-                        tokens.push(Token::new(&seq[m.start()..m.end()], i as TokenTypeId));
-                        return true;
-                    }
-                }
-            },
-            State::IGNORE => {
-                if let Some(m) = self.re_ignore.find(seq) {
-                    self.pos += m.end();
-                    return true;
-                }
-            },
-        };
-        return false;
     }
 
     pub fn tokenize(&mut self, in_str: &str) -> Result<Vec<Token>, TokenizationErr> {
@@ -84,21 +52,24 @@ impl Tokenizer {
             None => in_str.len(),
         };
 
-        self.pos = start;
+        let mut pos = start;
 
-        while self.pos < end {
-            let ok = match self.state {
-            State::START => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
-                            || self.match_state(State::IGNORE, &in_str[self.pos..], &mut tokens)
-            ,
-            State::TOKEN => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
-                            || self.match_state(State::IGNORE, &in_str[self.pos..], &mut tokens)
-            ,
-            State::IGNORE => self.match_state(State::TOKEN, &in_str[self.pos..], &mut tokens)
-            };
-            if !ok {
-                return Err(TokenizationErr::UnrecognizedChar(self.pos));
+        'main: while pos < end {
+            // match tokens
+            for (i, matcher) in self.token_matchers.iter().enumerate() {
+                if let Some(m) = matcher.find(&in_str[pos..]) {
+                    tokens.push(Token::new(&in_str[pos..pos+m.end()], i as TokenTypeId));
+                    pos += m.end();
+                    continue 'main;
+                }
             }
+            // match ignore
+            if let Some(m) = self.re_ignore.find(&in_str[pos..]) {
+                pos += m.end();
+                continue 'main;
+            }
+
+            return Err(TokenizationErr::UnrecognizedChar(pos));
         }
 
         // TODO: end with marker?
@@ -133,6 +104,7 @@ mod tests {
         
         // display_tokens(&tokens);
         
+        assert_eq!(tokens.len(), 20);
         assert_tokens_str(&tokens[0..6], vec!["line", "1", ",", "still", "line", "1"]);
         assert_eq!(tokens[6].token_type, 0 as TokenTypeId);
         assert_tokens_str(&tokens[7..9], vec!["line", "2"]);

@@ -5,31 +5,19 @@ A RISC-V Assembler written in Rust for educational purposes.
 # Tokenizer
 
 Tokenizes a sequence of characters (String) using 2 states recognized using regular expressions:
-1. TOKEN - for recognizing valid tokens
-2. IGNORE - for recognizing "whitespace" that must be discarded
-
-Multiple patterns can be used for TOKENS.
+1. Any number of TOKEN regexes
+2. One IGNORE regex
 
 Outputs a Token sequence as a Vector. Token struct contains the original token string slice and also a TokenTypeId representing the Token type. The TokenTypeId corresponds to the index of the Token pattern given to the Tokenizer constructor.
 
-An EOF Token is automatically added to the end of the Token sequence. The EOF Token has a TokenTypeId of -1.
-
-The TokenTypeIds are also used subsequently in parsing the token sequence.
-
 General rules are:
-1. TOKENS can appear consecutively, or with IGNORE chars and at most one BLANK in between them. IGNORE chars are discarded.
+1. TOKENS can appear consecutively, or with IGNORE chars in between them. IGNORE chars are discarded.
 2. Whitespace is trimmed from start and end of the input string automatically
+3. Regex patterns are tried in the order given during the construction of the Tokenizer (IGNORE is always tried last)
 
-The only valid transitions are:
-1. START -> TOKEN, IGNORE
-2. TOKEN -> TOKEN, IGNORE
-3. IGNORE -> TOKEN
+An EOF Token is automatically added to the end of the Token sequence. This EOF Token has a TokenTypeId of -1. The TokenTypeIds are also used subsequently in parsing the token sequence.
 
-Regex for each category is customizable and defined at creation of the tokenizer. The regex must be able to handle all chars in the input to tokenize successfully.
-
-For well-defined behavior, the ff guidelines should be followed:
-1. Regex for TOKENS should not contain any chars from IGNORE or BLANK
-2. Regex for IGNORE should not contain any chars from BLANK
+The given regexes must be able to handle all chars in the input to tokenize successfully. For well-defined behavior, the IGNORE regex should be defined to consume all chars in between valid tokens.
 
 To do:
 > Recognize surrounds (parentheses, quotes, etc.)
