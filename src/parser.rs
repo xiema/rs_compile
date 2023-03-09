@@ -144,4 +144,45 @@ mod tests {
 
         // display_ast(0, &nodes, &gram, 0);
     }
+
+    #[allow(unused_variables)]
+    #[test]
+    #[should_panic]
+    fn lr_to_parserll() {
+        let mut tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[[:digit:]]+"),
+            TokenPattern::Single("[-+*/]")
+        ],
+            TokenPattern::Single("[[:space:]]")
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_nonterm("Expression_Tail");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression_List", "Expression"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression"]);
+        gram_gen.make_prod("Expression", vec!["Term", "Expression_Tail"]);
+        gram_gen.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
+        gram_gen.make_eps("Expression_Tail");
+
+        let gram = gram_gen.generate();
+
+        // println!("{}", gram);
+
+        let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let mut parser = ParserLL::new();
+        let nodes = parser.parse(&gram, &tokens, 0).unwrap();
+
+        // display_ast(0, &nodes, &gram, 0);
+    }
 }

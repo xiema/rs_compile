@@ -54,7 +54,6 @@ pub fn define_lang() -> (Tokenizer, Grammar) {
 mod tests {
     use super::*;
     use crate::tokenizer::*;
-    use crate::grammar::*;
     use crate::parser::*;
 
     #[allow(dead_code)]
@@ -74,7 +73,7 @@ mod tests {
         // grammar::show_follow_sets(&gram.gvars);
         // grammar::show_prod_maps(&gram.gvars);
 
-        assert_eq!(gram.class, GrammarClass::LL(2));
+        assert_eq!(gram.class, (true, false, 2));
 
         let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n //comment here  \nlhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
         let tokens = tok.tokenize(code).unwrap();

@@ -39,13 +39,7 @@ pub struct Gvar {
     pub follow_set: FollowSet,
 }
 
-#[derive(PartialEq, Debug)]
-pub enum GrammarClass {
-    Undefined,
-    LL(usize),
-    LR(usize),
-    Mixed(usize),
-}
+pub type GrammarClass = (bool, bool, i32);
 
 pub struct Grammar {
     pub gvars: Vec<Gvar>,
@@ -57,6 +51,8 @@ pub struct Grammar {
 pub struct GrammarGenerator {
     gvars: Vec<Gvar>,
     gvar_id_map: HashMap<String, GvarId>,
+
+    class: GrammarClass,
 }
 
 impl GrammarGenerator {
@@ -64,6 +60,7 @@ impl GrammarGenerator {
         Self {
             gvars: Vec::new(),
             gvar_id_map: HashMap::new(),
+            class: (false, false, -1),
         }
     }
 
@@ -71,19 +68,28 @@ impl GrammarGenerator {
     /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
         self.get_follow_sets();
-        // show_follow_sets(&self.gvars);
+        show_follow_sets(&self.gvars);
 
         // for i in 0..self.gvars.len() {
         //     self.gvars[i].follow_set = self.get_follow_set(i);
         // }
         
-        for i in 0..self.gvars.len() {
-            self.gvars[i].prod_map = self.get_prod_map(i);
+        if !self.class.1 {
+            for i in 0..self.gvars.len() {
+                println!("Finding ProdMap for {}", &self.gvars[i].name);
+                self.gvars[i].prod_map = self.get_prod_map(i);
+            }
         }
+
+        // get required lookahead        
+        let n = self.gvars.iter().fold(0,
+            |acc, x| std::cmp::max(acc, x.prod_map.iter().fold(0, 
+            |acc, x| std::cmp::max(acc, x.0))));
+        self.class = (self.class.0, self.class.1, n as i32);
 
         let mut gram = Grammar {
             gvars: Vec::new(),
-            class: self.get_grammar_class(),
+            class: self.class,
             gvar_id_map: HashMap::new(),
         };
 
@@ -263,46 +269,6 @@ impl GrammarGenerator {
 
         prod_map
     }
-
-    fn get_grammar_class(&self) -> GrammarClass {
-        let mut gclass = GrammarClass::Undefined;
-        let mut n = 0;
-
-        for gvar in &self.gvars {
-            for (lookahead, _, _) in &gvar.prod_map {
-                n = std::cmp::max(*lookahead, n);
-            }
-        }
-
-        for gvar in &self.gvars {
-            for rhs in &gvar.productions {
-                // eps
-                if rhs.len() == 0 { continue; }
-
-                // Left-recursion
-                if rhs[0] == gvar.id {
-                    gclass = match gclass {
-                        GrammarClass::Undefined => GrammarClass::LR(n),
-                        GrammarClass::LL(_) => GrammarClass::Mixed(n),
-                        GrammarClass::LR(_) => GrammarClass::LR(n),
-                        GrammarClass::Mixed(_) => GrammarClass::Mixed(n),
-                    }
-                }
-                
-                // Right-recursion
-                if rhs[rhs.len()-1] == gvar.id {
-                    gclass = match gclass {
-                        GrammarClass::Undefined => GrammarClass::LL(n),
-                        GrammarClass::LL(_) => GrammarClass::LL(n),
-                        GrammarClass::LR(_) => GrammarClass::Mixed(n),
-                        GrammarClass::Mixed(_) => GrammarClass::Mixed(n),
-                    }
-                }
-            }
-        }
-
-        gclass
-    }
     
     pub fn new_nonterm(&mut self, name: &str) -> GvarId {
         let new_gvar_id = self.gvars.len();
@@ -345,6 +311,18 @@ impl GrammarGenerator {
     pub fn new_prod(&mut self, def_id: GvarId, rhs: Vec<GvarId>) -> ProductionId {
         let new_prod_id = self.gvars[def_id].productions.len();
 
+        if rhs.len() > 0 {
+            // Left-recursion
+            if rhs[0] == def_id {
+                self.class = (self.class.0, true, self.class.2);
+            }
+            
+            // Right-recursion
+            if rhs[rhs.len()-1] == def_id {
+                self.class = (true, self.class.1, self.class.2);
+            }
+        }
+
         self.gvars[def_id].productions.push(rhs);
 
         new_prod_id
@@ -367,21 +345,11 @@ impl GrammarGenerator {
 impl Grammar {
     #[allow(dead_code)]
     pub fn is_ll(&self) -> bool {
-        match self.class {
-            GrammarClass::Undefined => false,
-            GrammarClass::LL(_) => true,
-            GrammarClass::LR(_) => false,
-            GrammarClass::Mixed(_) => true,
-        }
+        self.class.0
     }
 
     pub fn is_lr(&self) -> bool {
-        match self.class {
-            GrammarClass::Undefined => false,
-            GrammarClass::LL(_) => false,
-            GrammarClass::LR(_) => true,
-            GrammarClass::Mixed(_) => true,
-        }
+        self.class.1
     }
 
     pub fn find_next(&self, gvar: GvarId, tokens: &[Token]) -> Result<ProductionId, &str> {
