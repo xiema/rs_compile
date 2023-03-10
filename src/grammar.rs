@@ -32,27 +32,29 @@ pub struct Gvar {
     pub id: GvarId,
     pub gvar_type: GvarType,
     pub name: String,
-    token_type: Option<TokenTypeId>,
+    pub token_type: Option<TokenTypeId>,
 
     pub productions: Vec<Vec<GvarId>>,
     pub prod_map: ProdMap,
     pub follow_set: FollowSet,
+    pub first_set: HashSet<GvarId>,
 }
 
 pub type GrammarClass = (bool, bool, i32);
 
 pub struct Grammar {
     pub gvars: Vec<Gvar>,
-
     pub class: GrammarClass,
     pub gvar_id_map: HashMap<String, GvarId>,
+    pub token_gvar_map: HashMap<TokenTypeId, GvarId>,
 }
 
 pub struct GrammarGenerator {
     gvars: Vec<Gvar>,
     gvar_id_map: HashMap<String, GvarId>,
-
+    
     class: GrammarClass,
+    token_gvar_map: HashMap<TokenTypeId, GvarId>,
 }
 
 impl GrammarGenerator {
@@ -60,6 +62,7 @@ impl GrammarGenerator {
         Self {
             gvars: Vec::new(),
             gvar_id_map: HashMap::new(),
+            token_gvar_map: HashMap::new(),
             class: (false, false, -1),
         }
     }
@@ -68,7 +71,8 @@ impl GrammarGenerator {
     /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
         self.get_follow_sets();
-        show_follow_sets(&self.gvars);
+        self.get_first_sets();
+        // show_follow_sets(&self.gvars);
 
         // for i in 0..self.gvars.len() {
         //     self.gvars[i].follow_set = self.get_follow_set(i);
@@ -76,27 +80,67 @@ impl GrammarGenerator {
         
         if !self.class.1 {
             for i in 0..self.gvars.len() {
-                println!("Finding ProdMap for {}", &self.gvars[i].name);
+                // println!("Finding ProdMap for {}", &self.gvars[i].name);
                 self.gvars[i].prod_map = self.get_prod_map(i);
             }
+
+            // get required lookahead        
+            let n = self.gvars.iter().fold(0,
+                |acc, x| std::cmp::max(acc, x.prod_map.iter().fold(0, 
+                |acc, x| std::cmp::max(acc, x.0))));
+            self.class = (self.class.0, self.class.1, n as i32);
         }
 
-        // get required lookahead        
-        let n = self.gvars.iter().fold(0,
-            |acc, x| std::cmp::max(acc, x.prod_map.iter().fold(0, 
-            |acc, x| std::cmp::max(acc, x.0))));
-        self.class = (self.class.0, self.class.1, n as i32);
 
         let mut gram = Grammar {
             gvars: Vec::new(),
             class: self.class,
             gvar_id_map: HashMap::new(),
+            token_gvar_map: HashMap::new(),
         };
 
         swap(&mut self.gvars, &mut gram.gvars);
         swap(&mut self.gvar_id_map, &mut gram.gvar_id_map);
+        swap(&mut self.token_gvar_map, &mut gram.token_gvar_map);
 
         gram
+    }
+
+    fn get_first_sets(&mut self) {
+
+        // add initial content
+        for i in 0..self.gvars.len() {
+            for j in 0..self.gvars[i].productions.len() {
+                if self.gvars[i].productions[j].len() > 0 {
+                    let id = self.gvars[i].productions[j][0];
+                    self.gvars[i].first_set.insert(id);
+                }
+            }
+        }
+
+        loop {
+            let mut modified = false;
+
+            for i in 0..self.gvars.len() {
+                let mut app = HashSet::new();
+                for j in self.gvars[i].first_set.iter() {
+                    for prod in &self.gvars[*j].productions {
+                        if prod.len() > 0 {
+                            app.insert(prod[0]);
+                        }
+                    }
+                }
+
+                for j in app.iter() {
+                    if !self.gvars[i].first_set.contains(j) {
+                        self.gvars[i].first_set.insert(*j);
+                        modified = true;
+                    }
+                }
+            }
+
+            if !modified { break; }
+        }
     }
 
     fn get_follow_sets(&mut self) {
@@ -282,6 +326,7 @@ impl GrammarGenerator {
             productions: Vec::new(),
             prod_map: Vec::new(),
             follow_set: FollowSet::new(),
+            first_set: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);
@@ -301,9 +346,11 @@ impl GrammarGenerator {
             productions: Vec::new(),
             prod_map: Vec::new(),
             follow_set: FollowSet::new(),
+            first_set: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);
+        self.token_gvar_map.insert(token_type, new_gvar_id);
 
         new_gvar_id
     }
