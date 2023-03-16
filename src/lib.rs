@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn lang_test() {
         let (mut tok, gram) = define_lang();
-        let mut parser = ParserLL::new(&gram);
+        let parser = ParserLL::new(&gram);
 
         // grammar::show_follow_sets(&gram.gvars);
         // grammar::show_prod_maps(&gram.gvars);
@@ -106,7 +106,7 @@ mod tests {
     #[should_panic]
     fn lang_test_panic() {
         let (mut tok, gram) = define_lang();
-        let mut parser = ParserLL::new(&gram);
+        let parser = ParserLL::new(&gram);
         
         let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2 ->";
         let tokens = tok.tokenize(code).unwrap();

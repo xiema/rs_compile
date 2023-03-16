@@ -17,7 +17,7 @@ pub struct Node {
 }
 
 pub trait Parser {
-    fn parse(&mut self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str>;
+    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str>;
     fn get_required_lookahead(&self) -> usize;
 }
 
@@ -48,7 +48,7 @@ impl ParserLL {
     }
 
     /// Creates a new node, optionally associating it with a parent.
-    pub fn new_node(&mut self, new_node_id: NodeId, gvar_id: GvarId, parent: Option<NodeId>) -> Node {
+    pub fn new_node(&self, new_node_id: NodeId, gvar_id: GvarId, parent: Option<NodeId>) -> Node {
         Node {
             id: new_node_id,
             gvar_id: gvar_id,
@@ -190,7 +190,7 @@ impl ParserLL {
 }
 
 impl Parser for ParserLL {
-    fn parse(&mut self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
+    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
 
         let mut nodes: Vec<Node> = Vec::new();
         let mut stk: VecDeque<NodeId> = VecDeque::new();
@@ -260,7 +260,7 @@ impl ParserLR {
     }
 
     /// Creates a new node, optionally associating it with a parent.
-    pub fn new_node(&mut self, new_node_id: NodeId, gvar_id: GvarId, parent: Option<NodeId>) -> Node {
+    pub fn new_node(&self, new_node_id: NodeId, gvar_id: GvarId, parent: Option<NodeId>) -> Node {
         Node {
             id: new_node_id,
             gvar_id: gvar_id,
@@ -323,12 +323,12 @@ impl ParserLR {
             let mut seen = HashSet::new();
             for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
                 if *prod_pos == grammar.gvars[*gvar_id].productions[*prod_id].len() {
-                    for id in &grammar.gvars[*gvar_id].follow_tokens {
-                        if follow_ids.contains(&id) || seen.contains(&id) {
+                    for (rhs, _) in &grammar.gvars[*gvar_id].follow_set {
+                        if follow_ids.contains(&rhs[0]) || seen.contains(&rhs[0]) {
                             panic!("Grammar is not LR(1)");
                         }
-                        action_map.insert(*id, ParseAction::Reduce(*gvar_id, *prod_id));
-                        seen.insert(id);
+                        action_map.insert(rhs[0], ParseAction::Reduce(*gvar_id, *prod_id));
+                        seen.insert(rhs[0]);
                     }
                 }
             }
@@ -393,7 +393,7 @@ impl ParserLR {
 }
 
 impl Parser for ParserLR {
-    fn parse(&mut self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
+    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
         let mut nodes: Vec<Node> = Vec::new();
 
         let mut states: Vec<usize> = Vec::new();

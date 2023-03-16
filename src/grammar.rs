@@ -1,4 +1,4 @@
-use std::{collections::{HashSet, HashMap}, fmt::Display, mem::swap};
+use std::{collections::{HashMap}, fmt::Display, mem::swap};
 use crate::tokenizer::{TokenTypeId};
 
 pub type GvarId = usize;
@@ -42,8 +42,6 @@ pub struct Gvar {
 
     pub productions: Vec<Vec<GvarId>>,
     pub follow_set: FollowSet,
-    pub follow_tokens: HashSet<GvarId>,
-    pub first_set: HashSet<GvarId>,
 }
 
 #[derive(Clone)]
@@ -80,8 +78,6 @@ impl GrammarGenerator {
     /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
         self.get_follow_sets();
-        self.get_first_sets();
-        self.get_follow_tokens();
 
         let mut gram = Grammar {
             gvars: Vec::new(),
@@ -97,78 +93,6 @@ impl GrammarGenerator {
         swap(&mut self.token_gvar_map, &mut gram.token_gvar_map);
 
         gram
-    }
-
-    fn get_follow_tokens(&mut self) {
-        loop {
-            let mut modified = false;
-
-            for i in 0..self.gvars.len() {
-                let mut follow_tokens = HashSet::new();
-
-                for (fol, _) in &self.gvars[i].follow_set {
-                    let j = fol[0];
-                    match self.gvars[j].gvar_type {
-                        GvarType::Terminal => {
-                            if !self.gvars[i].follow_tokens.contains(&j) {
-                                follow_tokens.insert(j);
-                            }
-                        },
-                        GvarType::NonTerminal => {
-                            for k in &self.gvars[j].follow_tokens {
-                                if !self.gvars[i].follow_tokens.contains(k) {
-                                    follow_tokens.insert(*k);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if follow_tokens.len() > 0 {
-                    modified = true;
-                    self.gvars[i].follow_tokens.extend(follow_tokens);
-                }
-            }
-
-            if !modified { break; }
-        }
-    }
-
-    fn get_first_sets(&mut self) {
-
-        // add initial content
-        for i in 0..self.gvars.len() {
-            for j in 0..self.gvars[i].productions.len() {
-                if self.gvars[i].productions[j].len() > 0 {
-                    let id = self.gvars[i].productions[j][0];
-                    self.gvars[i].first_set.insert(id);
-                }
-            }
-        }
-
-        loop {
-            let mut modified = false;
-
-            for i in 0..self.gvars.len() {
-                let mut app = HashSet::new();
-                for j in self.gvars[i].first_set.iter() {
-                    for prod in &self.gvars[*j].productions {
-                        if prod.len() > 0 {
-                            app.insert(prod[0]);
-                        }
-                    }
-                }
-
-                for j in app.iter() {
-                    if !self.gvars[i].first_set.contains(j) {
-                        self.gvars[i].first_set.insert(*j);
-                        modified = true;
-                    }
-                }
-            }
-
-            if !modified { break; }
-        }
     }
 
     fn get_follow_sets(&mut self) {
@@ -215,26 +139,6 @@ impl GrammarGenerator {
             if !modified { break; }
         }
     }
-
-    #[allow(dead_code)]
-    #[deprecated]
-    fn get_follow_set(&self, gvar_id: GvarId) -> FollowSet {
-        let mut new_follow_set = FollowSet::new();
-        for upper_gvar in &self.gvars {
-            for rhs in &upper_gvar.productions {
-                for rhs_subid in 0..rhs.len() {
-                    if rhs[rhs_subid] == gvar_id {
-                        add_follow(&mut new_follow_set, &rhs[(rhs_subid+1)..], upper_gvar.id);
-                        break;
-                    }
-                }
-            }
-        }
-
-        new_follow_set
-    }
-
-
    
     pub fn new_nonterm(&mut self, name: &str) -> GvarId {
         let new_gvar_id = self.gvars.len();
@@ -247,8 +151,6 @@ impl GrammarGenerator {
 
             productions: Vec::new(),
             follow_set: FollowSet::new(),
-            first_set: HashSet::new(),
-            follow_tokens: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);
@@ -267,8 +169,6 @@ impl GrammarGenerator {
 
             productions: Vec::new(),
             follow_set: FollowSet::new(),
-            first_set: HashSet::new(),
-            follow_tokens: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);
