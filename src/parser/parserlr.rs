@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 use crate::grammar::{Grammar, ProductionId, GvarId, GvarType};
 use crate::tokenizer::{Token, TokenTypeId};
@@ -239,29 +239,35 @@ impl Parser for ParserLR {
         // Stack of nodes to be used in the next Reduction
         let mut node_stack: Vec<NodeId> = Vec::new();
         states.push(root);
-        let mut pos = 0;
+        let mut token_idx = 0;
 
         // push the first token (transformed into the associated Terminal Gvar)
-        let token = tokens.first().with_context(|| "Input sequence is empty.")?;
+        let mut token = tokens.first().with_context(|| "Input sequence is empty.")?;
         nodes.push(self.new_node(0, self.grammar.token_gvar_map[&token.token_type], None));
 
         loop {
             // the last pushed element in nodes is also always the next input
             let next_node_id = nodes.len() - 1;
             let next_gvar_id = nodes[next_node_id].gvar_id;
-            if next_gvar_id == 0 { break; }
+            if next_gvar_id == 0 { break Ok(()) }
 
             let cur_state_id = *states.last().unwrap();
 
-            match self.find_next(cur_state_id, next_gvar_id).with_context(|| format!("Parse error at {}", pos))?
-            {
+            let action = match self.find_next(cur_state_id, next_gvar_id) {
+                Ok(a) => a,
+                Err(e) => break Err(e)
+            };
+
+            match action {
                 ParseAction::Shift(next_state) => {
                     node_stack.push(next_node_id);
                     states.push(*next_state);
-                    pos += 1;
+                    token_idx += 1;
                     let next_node_id = nodes.len();
-                    let token = tokens.get(pos)
-                        .with_context(|| format!("Missing tokens at {}, in shift from State {} to State {}", pos, cur_state_id, next_state))?;
+                    token = match tokens.get(token_idx) {
+                        Some(t) => t,
+                        None => break Err(anyhow!("Missing tokens at {}, in shift from State {} to State {}", token_idx, cur_state_id, next_state))
+                    };
                     nodes.push(self.new_node(next_node_id, self.grammar.token_gvar_map[&token.token_type], None));
                 },
                 ParseAction::Reduce(gvar_id, prod_id) => {
@@ -296,7 +302,7 @@ impl Parser for ParserLR {
                     nodes[next_node_id].children.reverse();
                 },
             }
-        }
+        }.with_context(|| format!("Parse error at {}:{}", token.line_num, token.line_pos))?;
 
         Ok(nodes)
     }
@@ -370,18 +376,18 @@ mod tests {
         let tokens = tokenizer.tokenize(code).unwrap();        
         let res = parser.parse(&tokens, 0);
         let e = res.err().unwrap();
-        println!("DisplayErr: {:?}", e);
+        println!("[DISPLAY] {:#}", e);
 
-        let code = "1 + 1 1";
+        let code = "1 + 1\n    1";
         let tokens = tokenizer.tokenize(code).unwrap();        
         let res = parser.parse(&tokens, 0);
         let e = res.err().unwrap();
-        println!("DisplayErr: {:?}", e);
+        println!("[DISPLAY] {:#}", e);
 
         let tokens = vec![];        
         let res = parser.parse(&tokens, 0);
         let e = res.err().unwrap();
-        println!("DisplayErr: {:?}", e);
+        println!("[DISPLAY] {:#}", e);
 
         // display_ast(nodes.len()-1, &nodes, &gram, 0);
     }

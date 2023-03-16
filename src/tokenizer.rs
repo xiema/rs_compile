@@ -11,6 +11,10 @@ pub type TokenTypeId = i32;
 pub struct Token {
     pub text: String,
     pub token_type: TokenTypeId,
+
+    pub line_num: usize,
+    pub line_pos: usize,
+    pub char_pos: usize,
 }
 
 pub enum TokenPattern<'a> {
@@ -66,10 +70,13 @@ impl TokenMatcher {
 }
 
 impl Token {
-    pub fn new(text: &str, token_type: TokenTypeId) -> Self {
+    pub fn new(text: &str, token_type: TokenTypeId, line_num: usize, line_pos: usize, char_pos: usize) -> Self {
         Self {
             text: String::from(text),
             token_type: token_type,
+            line_num: line_num,
+            line_pos: line_pos,
+            char_pos: char_pos,
         }
     }
 }
@@ -104,6 +111,23 @@ impl Tokenizer {
         }
     }
 
+    #[inline]
+    fn get_line_info(text: &str) -> (usize, usize) {
+        let mut line_pos = 0;
+        let num_lines = text.chars().fold(0, 
+            |acc, c|
+                if c == '\n' {
+                    line_pos = 0;
+                    acc+1
+                }
+                else {
+                    line_pos += 1;
+                    acc
+                }
+        );
+        (num_lines, line_pos)
+    }
+
     pub fn new(tok: Vec<TokenPattern>, ign: TokenPattern, preprocessor: Option<fn(&str) -> String>) -> Self {
         Self {
             re_ignore: Tokenizer::make_re(&ign),
@@ -121,14 +145,19 @@ impl Tokenizer {
         };
 
         let mut pos = 0;
+        let mut line_num = 0;
+        let mut line_pos = 0;
 
         'main: while pos < processed_str.len() {
             // match tokens
             for (i, matcher) in self.token_matchers.iter().enumerate() {
                 match matcher.find(&processed_str[pos..]) {
-                    Some((tok, adv)) => {
+                    Some((text, adv)) => {
                         pos += adv;
-                        tokens.push(Token::new(tok.as_str(), i as TokenTypeId));
+                        tokens.push(Token::new(text.as_str(), i as TokenTypeId, line_num, line_pos, pos));
+                        let (line_count, new_line_pos) = Self::get_line_info(text.as_str());
+                        line_num += line_count;
+                        if line_count > 0 { line_pos = new_line_pos; } else { line_pos += adv; }
                         continue 'main;
                     },
                     None => ()
@@ -137,8 +166,11 @@ impl Tokenizer {
 
             // match ignore
             match &self.re_ignore.find(&processed_str[pos..]) {
-                Some((_, adv)) => {
+                Some((text, adv)) => {
                     pos += adv;
+                    let (line_count, new_line_pos) = Self::get_line_info(text.as_str());
+                    line_num += line_count;
+                    if line_count > 0 { line_pos = new_line_pos; } else { line_pos += adv; }
                     continue 'main;
                 },
                 None => ()
@@ -148,7 +180,7 @@ impl Tokenizer {
         }
 
         // TODO: end with marker?
-        tokens.push(Token::new("", -1));
+        tokens.push(Token::new("", -1, line_num, line_pos, pos));
 
         return Ok(tokens);
     }

@@ -287,7 +287,7 @@ mod tests {
 
         let tok_term: TokenTypeId = 0;
         let tok_op: TokenTypeId = 1;
-        let tok_eof = Token {text: String::from(""), token_type: -1};
+        let tok_eof = Token::new("", -1, 0, 0, 0);
         
         let prog = gram_gen.new_nonterm("Program");
         let expr_list = gram_gen.new_nonterm("Expression_List");

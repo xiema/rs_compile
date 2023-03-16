@@ -206,41 +206,50 @@ impl Parser for ParserLL {
         nodes.push(self.new_node(0, root, None));
         stk.push_front(0);
 
-        while let Some(cur_node_id) = stk.pop_front() {
-            let gvar = &self.grammar.gvars[nodes[cur_node_id].gvar_id];
-            tokens.get(pos).with_context(|| format!("Missing tokens at {}, expected {}", pos, gvar.name))?;
+        let mut token = tokens.get(pos).with_context(|| "Empty token sequence")?;
 
-            match gvar.gvar_type {
-                GvarType::Terminal => {
-                    if gvar.token_type.unwrap() == tokens[pos].token_type {
-                        nodes[cur_node_id].token = Some(tokens[pos].clone());
-                        pos += 1;
-                    }
-                    else {
-                        return Err(anyhow!("Invalid token at {}: found '{}', expected {}", pos, tokens[pos].text, gvar.name));
-                    }
-                },
-                GvarType::NonTerminal => {
-                    let prod_id = self.find_next(nodes[cur_node_id].gvar_id, &tokens[pos..])
-                        .with_context(|| format!("Parser error at {}: found '{}'", pos, &tokens[pos].text))?;
-            
-                    // store production produced by this nonterm
-                    nodes[cur_node_id].prod_id = Some(prod_id);
+        loop {
+            match stk.pop_front() {
+                None => break Ok(()),
+                Some(cur_node_id) => {
+                    let gvar = &self.grammar.gvars[nodes[cur_node_id].gvar_id];
+                    token = match tokens.get(pos) {
+                        Some(t) => t,
+                        None => break Err(anyhow!("Missing tokens at {}:{}, expected {}", token.line_num, token.line_pos, gvar.name))
+                    };
 
-                    for child_gvar_id in &gvar.productions[prod_id] {
-                        let new_node_id = nodes.len();
-                        // create new node
-                        nodes.push(self.new_node(new_node_id, *child_gvar_id, Some(cur_node_id)));
-                        // associate new node as child of parent node
-                        nodes[cur_node_id].children.push(new_node_id);
-                    }
-                    // push new nodes onto stack
-                    for child_id in nodes[cur_node_id].children.iter().rev() {
-                        stk.push_front(*child_id);
+                    match gvar.gvar_type {
+                        GvarType::Terminal => {
+                            if gvar.token_type.unwrap() == token.token_type {
+                                pos += 1;
+                                nodes[cur_node_id].token = Some(token.clone());
+                            }
+                            else {
+                                break Err(anyhow!("Invalid token, found '{}', expected {}", token.text, gvar.name))
+                            }
+                        },
+                        GvarType::NonTerminal => {
+                            let prod_id = self.find_next(nodes[cur_node_id].gvar_id, &tokens[pos..])?;
+                    
+                            // store production produced by this nonterm
+                            nodes[cur_node_id].prod_id = Some(prod_id);
+
+                            for child_gvar_id in &gvar.productions[prod_id] {
+                                let new_node_id = nodes.len();
+                                // create new node
+                                nodes.push(self.new_node(new_node_id, *child_gvar_id, Some(cur_node_id)));
+                                // associate new node as child of parent node
+                                nodes[cur_node_id].children.push(new_node_id);
+                            }
+                            // push new nodes onto stack
+                            for child_id in nodes[cur_node_id].children.iter().rev() {
+                                stk.push_front(*child_id);
+                            }
+                        }
                     }
                 }
             }
-        }
+        }.with_context(|| format!("Parser error at {}:{}", token.line_num, token.line_pos))?;
 
         return Ok(nodes);
     }
@@ -315,17 +324,22 @@ mod tests {
         
         // parser.display_parse_table();
         
-        let code = "1 + 1 + +";
+        let code = "1 + 1 \n 1+ +";
         let tokens = tokenizer.tokenize(code).unwrap();
         let res = parser.parse(&tokens, 0);
         let e = res.err().unwrap();
-        println!("DisplayErr: {}", e);
+        println!("[DISPLAY] {:#}", e);
 
         let code = "1 + 1 +";
         let tokens = tokenizer.tokenize(code).unwrap();
         let res = parser.parse(&tokens, 0);
         let e = res.err().unwrap();
-        println!("DisplayErr: {}", e);
+        println!("[DISPLAY] {:#}", e);
+
+        let tokens = vec![];
+        let res = parser.parse(&tokens, 0);
+        let e = res.err().unwrap();
+        println!("[DISPLAY] {:#}", e);
 
         // display_ast(0, &res.unwrap(), &gram, 0);
     }
