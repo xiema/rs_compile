@@ -1,0 +1,7 @@
+// This is a sample grammar
+Program -> StatementList EOF
+StatementList -> Statement StatementList_Tail
+StatementList_Tail -> Statement StatementList_Tail
+StatementList_Tail -> eps
+Statement -> StatementType EndStatement
+// End of sample grammar
