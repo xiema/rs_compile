@@ -223,6 +223,11 @@ impl ParserLR {
             print!("\n");
         }
     }
+
+    fn find_next(&self, cur_state_id: usize, next_gvar_id: GvarId) -> Result<&ParseAction> {
+        let (_i, map) = &self.parse_table[cur_state_id][0];
+        map.get(&next_gvar_id).with_context(|| format!("Missing transition in State {} on input {}", cur_state_id, self.grammar.gvars[next_gvar_id].name))
+    }
 }
 
 impl Parser for ParserLR {
@@ -246,17 +251,18 @@ impl Parser for ParserLR {
             let next_gvar_id = nodes[next_node_id].gvar_id;
             if next_gvar_id == 0 { break; }
 
-            let cur_state_id = states.last().unwrap();
-            let (_i, map) = &self.parse_table[*cur_state_id][0];
+            let cur_state_id = *states.last().unwrap();
 
-            match map.get(&next_gvar_id).with_context(|| format!("Couldn't find {}", self.grammar.gvars[next_gvar_id].name))?
+            match self.find_next(cur_state_id, next_gvar_id).with_context(|| format!("Parse error at {}", pos))?
             {
                 ParseAction::Shift(next_state) => {
                     node_stack.push(next_node_id);
                     states.push(*next_state);
                     pos += 1;
                     let next_node_id = nodes.len();
-                    nodes.push(self.new_node(next_node_id, self.grammar.token_gvar_map[&tokens[pos].token_type], None));
+                    let token = tokens.get(pos)
+                        .with_context(|| format!("Missing tokens at {}, in shift from State {} to State {}", pos, cur_state_id, next_state))?;
+                    nodes.push(self.new_node(next_node_id, self.grammar.token_gvar_map[&token.token_type], None));
                 },
                 ParseAction::Reduce(gvar_id, prod_id) => {
                     let next_node_id = nodes.len();
@@ -307,10 +313,8 @@ mod tests {
 
     use super::*;
 
-    #[allow(unused_variables)]
-    #[test]
-    fn parserlr_test() {
-        let mut tokenizer = Tokenizer::new(vec![
+    fn create_lang() -> (Tokenizer, Grammar) {
+        let tokenizer = Tokenizer::new(vec![
             TokenPattern::Single("[[:digit:]]+"),
             TokenPattern::Single("[-+*/]"),
             TokenPattern::Single("[;]"),
@@ -337,6 +341,14 @@ mod tests {
 
         let gram = gram_gen.generate();
 
+        (tokenizer, gram)
+    }
+
+    #[allow(unused_variables)]
+    #[test]
+    fn parserlr_test() {
+        let (mut tokenizer, gram) = create_lang();
+
         // println!("{}", gram);
 
         let code = "\n1 + 1;\n\n2 + 2;\n\n3 + 1 + 2 +2;";
@@ -344,6 +356,32 @@ mod tests {
         
         let parser = ParserLR::new(&gram);
         let nodes = parser.parse(&tokens, 0).unwrap();
+
+        // display_ast(nodes.len()-1, &nodes, &gram, 0);
+    }
+
+    #[allow(unused_variables)]
+    #[test]
+    fn parserlr_err_test() {
+        let (mut tokenizer, gram) = create_lang();
+        let parser = ParserLR::new(&gram);
+
+        let code = "1 + 1";
+        let tokens = tokenizer.tokenize(code).unwrap();        
+        let res = parser.parse(&tokens, 0);
+        let e = res.err().unwrap();
+        println!("DisplayErr: {:?}", e);
+
+        let code = "1 + 1 1";
+        let tokens = tokenizer.tokenize(code).unwrap();        
+        let res = parser.parse(&tokens, 0);
+        let e = res.err().unwrap();
+        println!("DisplayErr: {:?}", e);
+
+        let tokens = vec![];        
+        let res = parser.parse(&tokens, 0);
+        let e = res.err().unwrap();
+        println!("DisplayErr: {:?}", e);
 
         // display_ast(nodes.len()-1, &nodes, &gram, 0);
     }
