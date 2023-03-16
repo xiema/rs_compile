@@ -1,7 +1,7 @@
 use std::collections::{VecDeque, HashMap, HashSet};
 use std::mem::swap;
 
-use crate::grammar::{GvarId, ProductionId, Grammar, GvarType, ParseAction};
+use crate::grammar::{GvarId, ProductionId, Grammar, GvarType};
 use crate::tokenizer::{Token, TokenTypeId};
 
 type NodeId = usize;
@@ -59,6 +59,9 @@ impl ParserLL {
         }
     }
 
+    /// Create a LL Parse Table
+    /// Creates Maps of TokenTypeIds to ProductionIds for each Gvar with the minimum possible lookaheads
+    /// Lookahead positions are determined (and may be sparse), and a Map is created for each position.
     fn get_parse_table(grammar: &Grammar) -> Vec<Vec<(usize, HashMap<TokenTypeId, ProductionId>)>>  {
         let mut table: Vec<Vec<(usize, HashMap<TokenTypeId, ProductionId>)>> = Vec::new();
 
@@ -170,6 +173,8 @@ impl ParserLL {
         table
     }
 
+    /// Uses the parse table to find which production to use for a Gvar given a sequence of
+    /// input tokens.
     fn find_next(&self, gvar: GvarId, tokens: &[Token]) -> Result<ProductionId, &str> {
         if self.grammar.gvars[gvar].productions.len() == 1 {
             return Ok(0);
@@ -191,7 +196,6 @@ impl ParserLL {
 
 impl Parser for ParserLL {
     fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
-
         let mut nodes: Vec<Node> = Vec::new();
         let mut stk: VecDeque<NodeId> = VecDeque::new();
         let mut pos = 0;
@@ -237,7 +241,13 @@ impl Parser for ParserLL {
     }
 }
 
-struct ParserLR {
+pub enum ParseAction {
+    Shift(usize),
+    Reduce(GvarId, ProductionId),
+    ShiftReduce(GvarId, ProductionId),
+}
+
+pub struct ParserLR {
     grammar: Grammar,
     parse_table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>>,
     lookahead: usize,
@@ -271,25 +281,32 @@ impl ParserLR {
         }
     }
 
+    /// Creates a LR Parse Table
+    /// Creates Maps of Terminal GvarIds to ParseActions for each lookahead position.
+    /// Currently only creates 1 Map at lookahead=1.
     fn get_parse_table(grammar: &Grammar) -> Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>> {
-        // add initial state
-
         let mut table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>> = Vec::new();
         let mut state_defs: Vec<HashSet<(GvarId, ProductionId, usize)>> = Vec::new();
 
         let mut cur_state_id = 0;
         
-        // starting state
-        let mut state_def = HashSet::new();
-        state_def.insert((0, 0, 0));
-        state_defs.push(state_def);
+        // A State is composed of Substates which are tuples of
+        //   (GvarId, ProductionId, ProductionPosition)
+        //   GvarId: Which Gvar at the LHS
+        //   ProductionId: Which Production of GvarId at the RHS
+        //   ProductionPosition: The handle position in the RHS
+        let mut starting_state = HashSet::new();
+        starting_state.insert((0, 0, 0));
+        state_defs.push(starting_state);
 
         while cur_state_id < state_defs.len() {
             let mut closures = HashSet::new();
             let mut follow_ids = HashSet::new();
             let mut action_map: HashMap<GvarId, ParseAction> = HashMap::new();
 
-            // get closures and follow ids
+            // get all closures and follow ids
+
+            // get starting closures and follow ids
             for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
                 if *prod_pos < grammar.gvars[*gvar_id].productions[*prod_id].len() {
                     let id = grammar.gvars[*gvar_id].productions[*prod_id][*prod_pos];
@@ -301,6 +318,7 @@ impl ParserLR {
                     follow_ids.insert(id);
                 }
             }
+            // get derivative closures and follow ids
             loop {
                 let mut new_closures = HashSet::new();
                 for (gvar_id, prod_id) in &closures {
@@ -358,16 +376,16 @@ impl ParserLR {
                 }
 
                 if new_state.len() == 1 && reduce {
-                    // shift-reduce a possible production if it is the only one compatible with the follow_id
+                    // SHIFT-REDUCE
+                    // only if there is a unique substate to reduce
                     for (gvar_id, prod_id, _) in &new_state {
                         action_map.insert(follow_id, ParseAction::ShiftReduce(*gvar_id, *prod_id));
                     }
                 }
                 else {
-                    // shift
-
+                    // SHIFT
                     // add the new state if it is unique, or else get the existing state_id
-                    let new_state_id = match state_defs.iter().enumerate()
+                    let next_state_id = match state_defs.iter().enumerate()
                         .find(|(_, state_def)| 
                             new_state.eq(&state_def) && state_def.eq(&&new_state)
                     ) {
@@ -379,7 +397,7 @@ impl ParserLR {
                             id
                         }
                     };
-                    action_map.insert(follow_id, ParseAction::Shift(new_state_id));
+                    action_map.insert(follow_id, ParseAction::Shift(next_state_id));
                 }
             }
 
@@ -396,33 +414,40 @@ impl Parser for ParserLR {
     fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
         let mut nodes: Vec<Node> = Vec::new();
 
+        // Stack of past states seen by the DFA
         let mut states: Vec<usize> = Vec::new();
+        // Stack of nodes to be used in the next Reduction
         let mut node_stack: Vec<NodeId> = Vec::new();
-        states.push(0);
+        states.push(root);
         let mut pos = 0;
 
+        // push the first token (transformed into the associated Terminal Gvar)
         nodes.push(self.new_node(0, self.grammar.token_gvar_map[&tokens[pos].token_type], None));
 
         loop {
+            // the last pushed element in nodes is also always the next input
             let next_node_id = nodes.len() - 1;
-            if nodes[next_node_id].gvar_id == 0 { break; }
+            let next_gvar_id = nodes[next_node_id].gvar_id;
+            if next_gvar_id == 0 { break; }
 
-            let state_id = states.last().unwrap();
-            let (i, map) = &self.parse_table[*state_id][0];
+            let cur_state_id = states.last().unwrap();
+            let (i, map) = &self.parse_table[*cur_state_id][0];
 
-            match map[&nodes[next_node_id].gvar_id] {
+            match map.get(&next_gvar_id)
+                .expect(format!("Couldn't find {}", self.grammar.gvars[next_gvar_id].name).as_str())
+            {
                 ParseAction::Shift(next_state) => {
                     node_stack.push(next_node_id);
-                    states.push(next_state);
+                    states.push(*next_state);
                     pos += 1;
                     let next_node_id = nodes.len();
                     nodes.push(self.new_node(next_node_id, self.grammar.token_gvar_map[&tokens[pos].token_type], None));
                 },
                 ParseAction::Reduce(gvar_id, prod_id) => {
                     let next_node_id = nodes.len();
-                    nodes.push(self.new_node(next_node_id, gvar_id, None));
+                    nodes.push(self.new_node(next_node_id, *gvar_id, None));
 
-                    let pop_count = self.grammar.gvars[gvar_id].productions[prod_id].len();
+                    let pop_count = self.grammar.gvars[*gvar_id].productions[*prod_id].len();
                     for _ in 0..pop_count {
                         states.pop();
                         let node_id = node_stack.pop().unwrap();
@@ -435,12 +460,12 @@ impl Parser for ParserLR {
                     let child_node_id = next_node_id;
 
                     let next_node_id = nodes.len();
-                    nodes.push(self.new_node(next_node_id, gvar_id, None));
+                    nodes.push(self.new_node(next_node_id, *gvar_id, None));
 
                     nodes[child_node_id].parent = Some(next_node_id);
                     nodes[next_node_id].children.push(child_node_id);
 
-                    let pop_count = self.grammar.gvars[gvar_id].productions[prod_id].len() - 1;
+                    let pop_count = self.grammar.gvars[*gvar_id].productions[*prod_id].len() - 1;
                     for _ in 0..pop_count {
                         states.pop();
                         let node_id = node_stack.pop().unwrap();
@@ -517,7 +542,7 @@ mod tests {
         let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
         let tokens = tokenizer.tokenize(code).unwrap();
         
-        let mut parser = ParserLL::new(&gram);
+        let parser = ParserLL::new(&gram);
         let nodes = parser.parse(&tokens, 0).unwrap();
 
         // display_ast(0, &nodes, &gram, 0);
@@ -557,7 +582,7 @@ mod tests {
         let code = "\n1 + 1;\n\n2 + 2;\n\n3 + 1 + 2 +2;";
         let tokens = tokenizer.tokenize(code).unwrap();
         
-        let mut parser = ParserLR::new(&gram);
+        let parser = ParserLR::new(&gram);
         let nodes = parser.parse(&tokens, 0).unwrap();
 
         // display_ast(nodes.len()-1, &nodes, &gram, 0);
@@ -598,7 +623,7 @@ mod tests {
         let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
         let tokens = tokenizer.tokenize(code).unwrap();
         
-        let mut parser = ParserLL::new(&gram);
+        let parser = ParserLL::new(&gram);
         let nodes = parser.parse(&tokens, 0).unwrap();
 
         // display_ast(0, &nodes, &gram, 0);

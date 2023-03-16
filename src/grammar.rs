@@ -12,12 +12,6 @@ pub enum GvarType {
 
 type FollowSet = Vec<(Vec<GvarId>, GvarId)>;
 
-pub enum ParseAction {
-    Shift(usize),
-    Reduce(GvarId, ProductionId),
-    ShiftReduce(GvarId, ProductionId),
-}
-
 fn has_follow(follow_set: &FollowSet, list1: &[GvarId], id1: GvarId) -> bool {
     for (list2, id2) in follow_set {
         if list1.eq(list2) && id1.eq(id2) {

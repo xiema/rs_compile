@@ -89,7 +89,3 @@ To Do:
 > Configure resolving of ambiguity
 > Descriptive errors
 > Implied EOF token
-
-
-cleanup gvars
-cleanup typedefs
