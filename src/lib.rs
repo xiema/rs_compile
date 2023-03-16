@@ -68,12 +68,13 @@ mod tests {
     #[test]
     fn lang_test() {
         let (mut tok, gram) = define_lang();
-        let mut parser = ParserLL::new();
+        let mut parser = ParserLL::new(&gram);
 
         // grammar::show_follow_sets(&gram.gvars);
         // grammar::show_prod_maps(&gram.gvars);
 
-        assert_eq!(gram.class, (true, false, 2));
+        assert_eq!(gram.is_parseable_ll(), true);
+        assert_eq!(parser.get_required_lookahead(), 2);
 
         let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n //comment here  \nlhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
         let tokens = tok.tokenize(code).unwrap();
@@ -96,7 +97,7 @@ mod tests {
         }
         assert_eq!(tokens[tokens.len()-1].token_type, -1 as TokenTypeId);
 
-        let nodes = parser.parse(&gram, &tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens, 0).unwrap();
 
         // parser::display_ast(0, &nodes, &gram, 0);
     }
@@ -105,11 +106,11 @@ mod tests {
     #[should_panic]
     fn lang_test_panic() {
         let (mut tok, gram) = define_lang();
-        let mut parser = ParserLL::new();
+        let mut parser = ParserLL::new(&gram);
         
         let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2 ->";
         let tokens = tok.tokenize(code).unwrap();
-        match parser.parse(&gram, &tokens, 0) {
+        match parser.parse(&tokens, 0) {
             Ok(_) => (),
             Err(e) => panic!("{}", e),
         }
