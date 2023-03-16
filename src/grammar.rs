@@ -1,4 +1,7 @@
-use std::{collections::{HashMap}, fmt::Display, mem::swap};
+use std::collections::{HashMap};
+use std::fmt::Display;
+use std::mem::swap;
+
 use crate::tokenizer::{TokenTypeId};
 
 pub type GvarId = usize;
@@ -250,26 +253,23 @@ pub fn show_prod_maps(gvars: &Vec<Gvar>, prod_maps: &Vec<Vec<(usize, HashMap<Tok
 }
 
 impl Display for Grammar {
-    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for gvar in &self.gvars {
-            for prod in &gvar.productions {
-                print!("{} --> ", gvar.name);
-                for child in prod {
-                    print!("{} ", self.gvars[*child].name);
-                }
-                print!("\n");
-            }
-        }
-        for gvar in &self.gvars {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.gvars.iter().try_for_each(|gvar|
+            gvar.productions.iter().try_for_each(|prod| {
+                write!(f, "{} --> ", gvar.name)
+                .and(prod.iter().try_for_each(|child|
+                    write!(f, "{} ", self.gvars[*child].name)))
+                .and(write!(f, "\n"))
+            })
+        )
+        .and(self.gvars.iter().try_for_each(|gvar|
             match gvar.gvar_type {
                 GvarType::Terminal => {
-                    println!("{} --> {}", gvar.name, gvar.token_type.unwrap());
+                    writeln!(f, "{} --> {}", gvar.name, gvar.token_type.unwrap())
                 },
-                _ => ()
+                _ => Ok(())
             }
-            
-        }
-        Ok(())
+        ))
     }
 }
 
@@ -308,7 +308,7 @@ mod tests {
 
         let gram = gram_gen.generate();
 
-        // println!("{}", gram);
+        println!("{}", gram);
         // show_follow_sets(&gram.gvars);
         // show_prod_maps(&gram.gvars);
 
