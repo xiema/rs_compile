@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::grammar::{Grammar, ProductionId, GvarId, GvarType};
-use crate::tokenizer::{Token};
+use anyhow::{Context, Result};
 
-use super::{Node, NodeId, Parser};
+use crate::grammar::{Grammar, ProductionId, GvarId, GvarType};
+use crate::tokenizer::{Token, TokenTypeId};
+
+use super::*;
 
 pub enum ParseAction {
     Shift(usize),
@@ -16,6 +18,10 @@ pub struct ParserLR {
     parse_table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>>,
     state_defs: Vec<HashSet<(GvarId, ProductionId, usize)>>,
     lookahead: usize,
+}
+
+pub enum ParserLRErr {
+    UnknownStateShift(usize, usize, TokenTypeId),
 }
 
 impl ParserLR {
@@ -220,7 +226,7 @@ impl ParserLR {
 }
 
 impl Parser for ParserLR {
-    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
+    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>> {
         let mut nodes: Vec<Node> = Vec::new();
 
         // Stack of past states seen by the DFA
@@ -231,7 +237,8 @@ impl Parser for ParserLR {
         let mut pos = 0;
 
         // push the first token (transformed into the associated Terminal Gvar)
-        nodes.push(self.new_node(0, self.grammar.token_gvar_map[&tokens[pos].token_type], None));
+        let token = tokens.first().with_context(|| "Input sequence is empty.")?;
+        nodes.push(self.new_node(0, self.grammar.token_gvar_map[&token.token_type], None));
 
         loop {
             // the last pushed element in nodes is also always the next input
@@ -242,8 +249,7 @@ impl Parser for ParserLR {
             let cur_state_id = states.last().unwrap();
             let (_i, map) = &self.parse_table[*cur_state_id][0];
 
-            match map.get(&next_gvar_id)
-                .expect(format!("Couldn't find {}", self.grammar.gvars[next_gvar_id].name).as_str())
+            match map.get(&next_gvar_id).with_context(|| format!("Couldn't find {}", self.grammar.gvars[next_gvar_id].name))?
             {
                 ParseAction::Shift(next_state) => {
                     node_stack.push(next_node_id);
@@ -291,5 +297,95 @@ impl Parser for ParserLR {
 
     fn get_required_lookahead(&self) -> usize {
         self.lookahead
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::grammar::*;
+    use crate::tokenizer::*;
+
+    use super::*;
+
+    #[allow(unused_variables)]
+    #[test]
+    fn parserlr_test() {
+        let mut tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[[:digit:]]+"),
+            TokenPattern::Single("[-+*/]"),
+            TokenPattern::Single("[;]"),
+        ],
+            TokenPattern::Single("[[:space:]]"),
+            None
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EndExpression", 2 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression_List", "Expression", "EndExpression"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression", "EndExpression"]);
+        gram_gen.make_prod("Expression", vec!["Expression", "Operator", "Term"]);
+        gram_gen.make_prod("Expression", vec!["Term"]);
+
+        let gram = gram_gen.generate();
+
+        // println!("{}", gram);
+
+        let code = "\n1 + 1;\n\n2 + 2;\n\n3 + 1 + 2 +2;";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let parser = ParserLR::new(&gram);
+        let nodes = parser.parse(&tokens, 0).unwrap();
+
+        // display_ast(nodes.len()-1, &nodes, &gram, 0);
+    }
+
+    #[allow(unused_variables)]
+    #[test]
+    fn parserlr_endlines_test() {
+        let mut tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[[:digit:]]+"),
+            TokenPattern::Single("[-+*/]"),
+            TokenPattern::Single("\n+[[:space:]]*"),
+        ],
+            TokenPattern::Single("[[:space:]]"),
+            None
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EndLine", 2 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression_List", "Expression", "EndLine"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression", "EndLine"]);
+        gram_gen.make_prod("Expression", vec!["Expression", "Operator", "Term"]);
+        gram_gen.make_prod("Expression", vec!["Term"]);
+
+        let gram = gram_gen.generate();
+
+        // println!("{}", gram);
+
+        let code = "1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2\n";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let parser = ParserLR::new(&gram);
+        let nodes = parser.parse(&tokens, 0).unwrap();
+
+        // display_ast(nodes.len()-1, &nodes, &gram, 0);
     }
 }

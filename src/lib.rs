@@ -150,6 +150,7 @@ mod tests {
         // parser::display_ast(0, &nodes, &gram, 0);
     }
 
+    #[allow(unused_variables)]
     #[test]
     #[should_panic]
     fn lang_test_panic() {
@@ -158,10 +159,7 @@ mod tests {
         
         let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2 ->";
         let tokens = tok.tokenize(code).unwrap();
-        match parser.parse(&tokens, 0) {
-            Ok(_) => (),
-            Err(e) => panic!("{}", e),
-        }
+        let nodes = parser.parse(&tokens, 0).unwrap();
     }
 
     #[allow(unused_variables)]

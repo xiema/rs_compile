@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem::swap;
 
+use anyhow::{anyhow, Context};
+use::anyhow::{Result};
+
 use crate::grammar::{Grammar, ProductionId, GvarId, GvarType};
 use crate::tokenizer::{Token, TokenTypeId};
 
@@ -160,22 +163,21 @@ impl ParserLL {
 
     /// Uses the parse table to find which production to use for a Gvar given a sequence of
     /// input tokens.
-    fn find_next(&self, gvar: GvarId, tokens: &[Token]) -> Result<ProductionId, &str> {
-        if self.grammar.gvars[gvar].productions.len() == 1 {
-            return Ok(0);
-        }
+    fn find_next(&self, gvar_id: GvarId, tokens: &[Token]) -> Result<ProductionId> {
+        let gvar = &self.grammar.gvars[gvar_id];
 
-        if tokens.len() == 0 { panic!("Tokens length is 0!"); }
-        for i in 0..tokens.len() {
-            let token = &tokens[i];
-            for (lookahead, map) in &self.parse_table[gvar] {
+        if gvar.productions.len() == 1 { return Ok(0); }
+
+        if tokens.len() == 0 { return Err(anyhow!("Tokens length is 0!")) }
+        for (i, token) in tokens.iter().enumerate() {
+            for (lookahead, map) in &self.parse_table[gvar_id] {
                 if *lookahead > i + 1 { break; }
                 if *lookahead == i + 1 && map.contains_key(&token.token_type) {
                     return Ok(map[&token.token_type]);
                 }
             }
         }
-        return Err("Couldn't find production");
+        return Err(anyhow!("Couldn't find production for {}", gvar.name));
     }
 
     pub fn display_parse_table(&self) {
@@ -197,33 +199,38 @@ impl ParserLL {
 }
 
 impl Parser for ParserLL {
-    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
+    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>> {
         let mut nodes: Vec<Node> = Vec::new();
         let mut stk: VecDeque<NodeId> = VecDeque::new();
         let mut pos = 0;
         nodes.push(self.new_node(0, root, None));
         stk.push_front(0);
 
-        while !stk.is_empty() {
-            let cur_node_id = stk.pop_front().unwrap();
-            match self.grammar.gvars[nodes[cur_node_id].gvar_id].gvar_type {
+        while let Some(cur_node_id) = stk.pop_front() {
+            let gvar = &self.grammar.gvars[nodes[cur_node_id].gvar_id];
+            tokens.get(pos).with_context(|| format!("Missing tokens at {}, expected {}", pos, gvar.name))?;
+
+            match gvar.gvar_type {
                 GvarType::Terminal => {
-                    nodes[cur_node_id].token = Some(tokens[pos].clone());
-                    pos += 1;
+                    if gvar.token_type.unwrap() == tokens[pos].token_type {
+                        nodes[cur_node_id].token = Some(tokens[pos].clone());
+                        pos += 1;
+                    }
+                    else {
+                        return Err(anyhow!("Invalid token at {}: found '{}', expected {}", pos, tokens[pos].text, gvar.name));
+                    }
                 },
                 GvarType::NonTerminal => {
                     let prod_id = self.find_next(nodes[cur_node_id].gvar_id, &tokens[pos..])
-                        .unwrap_or_else(|err| panic!("Parser error: {}, {}", err, tokens[pos].text));
+                        .with_context(|| format!("Parser error at {}: found '{}'", pos, &tokens[pos].text))?;
             
                     // store production produced by this nonterm
                     nodes[cur_node_id].prod_id = Some(prod_id);
-                    let prod_len = self.grammar.gvars[nodes[cur_node_id].gvar_id].productions[prod_id].len();
 
-                    for i in 0..prod_len {
-                        let child_gvar_id = self.grammar.gvars[nodes[cur_node_id].gvar_id].productions[prod_id][i];
+                    for child_gvar_id in &gvar.productions[prod_id] {
                         let new_node_id = nodes.len();
                         // create new node
-                        nodes.push(self.new_node(new_node_id, child_gvar_id, Some(cur_node_id)));
+                        nodes.push(self.new_node(new_node_id, *child_gvar_id, Some(cur_node_id)));
                         // associate new node as child of parent node
                         nodes[cur_node_id].children.push(new_node_id);
                     }
@@ -240,5 +247,128 @@ impl Parser for ParserLL {
 
     fn get_required_lookahead(&self) -> usize {
         self.lookahead
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::grammar::*;
+    use crate::parser::*;
+    use crate::tokenizer::*;
+
+    use super::*;
+
+    fn create_lang() -> (Tokenizer, Grammar) {
+        let tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[0-9]+"),
+            TokenPattern::Single("[-+*/]")
+        ],
+            TokenPattern::Single("[[:space:]]"),
+            None
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression_List_Tail");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_nonterm("Expression_Tail");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression", "Expression_List_Tail"]);
+        gram_gen.make_prod("Expression_List_Tail", vec!["Expression", "Expression_List_Tail"]);
+        gram_gen.make_eps("Expression_List_Tail");
+        gram_gen.make_prod("Expression", vec!["Term", "Expression_Tail"]);
+        gram_gen.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
+        gram_gen.make_eps("Expression_Tail");
+
+        let gram = gram_gen.generate();
+
+        (tokenizer, gram)
+    }
+
+    #[allow(unused_variables)]
+    #[test]
+    fn parserll_test() {
+        let (mut tokenizer, gram) = create_lang();
+
+        // println!("{}", gram);
+
+        let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let parser = ParserLL::new(&gram);
+        let nodes = parser.parse(&tokens, 0).unwrap();
+
+        // display_ast(0, &nodes, &gram, 0);
+    }
+
+    #[allow(unused_variables)]
+    #[test]
+    fn parserll_err_test() {
+        let (mut tokenizer, gram) = create_lang();
+        let parser = ParserLL::new(&gram);
+        
+        // parser.display_parse_table();
+        
+        let code = "1 + 1 + +";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        let res = parser.parse(&tokens, 0);
+        let e = res.err().unwrap();
+        println!("DisplayErr: {}", e);
+
+        let code = "1 + 1 +";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        let res = parser.parse(&tokens, 0);
+        let e = res.err().unwrap();
+        println!("DisplayErr: {}", e);
+
+        // display_ast(0, &res.unwrap(), &gram, 0);
+    }
+
+    #[allow(unused_variables)]
+    #[test]
+    #[should_panic]
+    fn lr_to_parserll() {
+        let mut tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[[:digit:]]+"),
+            TokenPattern::Single("[-+*/]")
+        ],
+            TokenPattern::Single("[[:space:]]"),
+            None
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_nonterm("Expression_Tail");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression_List", "Expression"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression"]);
+        gram_gen.make_prod("Expression", vec!["Term", "Expression_Tail"]);
+        gram_gen.make_prod("Expression_Tail", vec!["Operator", "Expression"]);
+        gram_gen.make_eps("Expression_Tail");
+
+        let gram = gram_gen.generate();
+
+        // println!("{}", gram);
+
+        let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let parser = ParserLL::new(&gram);
+        let nodes = parser.parse(&tokens, 0).unwrap();
+
+        // display_ast(0, &nodes, &gram, 0);
     }
 }
