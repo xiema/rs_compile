@@ -431,7 +431,7 @@ impl Parser for ParserLR {
             if next_gvar_id == 0 { break; }
 
             let cur_state_id = states.last().unwrap();
-            let (i, map) = &self.parse_table[*cur_state_id][0];
+            let (_i, map) = &self.parse_table[*cur_state_id][0];
 
             match map.get(&next_gvar_id)
                 .expect(format!("Couldn't find {}", self.grammar.gvars[next_gvar_id].name).as_str())
@@ -513,7 +513,8 @@ mod tests {
             TokenPattern::Single("[[:digit:]]+"),
             TokenPattern::Single("[-+*/]")
         ],
-            TokenPattern::Single("[[:space:]]")
+            TokenPattern::Single("[[:space:]]"),
+            None
         );
 
         let mut gram_gen = GrammarGenerator::new();
@@ -556,7 +557,8 @@ mod tests {
             TokenPattern::Single("[-+*/]"),
             TokenPattern::Single("[;]"),
         ],
-            TokenPattern::Single("[[:space:]]")
+            TokenPattern::Single("[[:space:]]"),
+            None
         );
 
         let mut gram_gen = GrammarGenerator::new();
@@ -590,13 +592,55 @@ mod tests {
 
     #[allow(unused_variables)]
     #[test]
+    fn parserlr_endlines_test() {
+        let mut tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[[:digit:]]+"),
+            TokenPattern::Single("[-+*/]"),
+            TokenPattern::Single("\n+[[:space:]]*"),
+        ],
+            TokenPattern::Single("[[:space:]]"),
+            None
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EndLine", 2 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression_List", "Expression", "EndLine"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression", "EndLine"]);
+        gram_gen.make_prod("Expression", vec!["Expression", "Operator", "Term"]);
+        gram_gen.make_prod("Expression", vec!["Term"]);
+
+        let gram = gram_gen.generate();
+
+        // println!("{}", gram);
+
+        let code = "1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2\n";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let parser = ParserLR::new(&gram);
+        let nodes = parser.parse(&tokens, 0).unwrap();
+
+        // display_ast(nodes.len()-1, &nodes, &gram, 0);
+    }
+
+    #[allow(unused_variables)]
+    #[test]
     #[should_panic]
     fn lr_to_parserll() {
         let mut tokenizer = Tokenizer::new(vec![
             TokenPattern::Single("[[:digit:]]+"),
             TokenPattern::Single("[-+*/]")
         ],
-            TokenPattern::Single("[[:space:]]")
+            TokenPattern::Single("[[:space:]]"),
+            None
         );
 
         let mut gram_gen = GrammarGenerator::new();

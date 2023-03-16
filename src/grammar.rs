@@ -10,23 +10,6 @@ pub enum GvarType {
     NonTerminal,
 }
 
-type FollowSet = Vec<(Vec<GvarId>, GvarId)>;
-
-fn has_follow(follow_set: &FollowSet, list1: &[GvarId], id1: GvarId) -> bool {
-    for (list2, id2) in follow_set {
-        if list1.eq(list2) && id1.eq(id2) {
-            return true;
-        }
-    }
-    return false;
-}
-
-fn add_follow(follow_set: &mut FollowSet, list: &[GvarId], id: GvarId) {
-    if !has_follow(follow_set, list, id) {
-        follow_set.push((Vec::from(list), id));
-    }
-}
-
 #[derive(Clone)]
 pub struct Gvar {
     pub id: GvarId,
@@ -55,6 +38,26 @@ pub struct GrammarGenerator {
     ll_flag: bool,
     lr_flag: bool,
     token_gvar_map: HashMap<TokenTypeId, GvarId>,
+}
+
+/// Set of possible Symbol Sequences after a Gvar.
+/// Each item is composed of a symbol sequence and then a GvarId whose FollowSet would
+/// then continue the sequence (possibly indefinitely)
+type FollowSet = Vec<(Vec<GvarId>, GvarId)>;
+
+fn has_follow(follow_set: &FollowSet, list1: &[GvarId], id1: GvarId) -> bool {
+    for (list2, id2) in follow_set {
+        if list1.eq(list2) && id1.eq(id2) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn add_follow(follow_set: &mut FollowSet, list: &[GvarId], id: GvarId) {
+    if !has_follow(follow_set, list, id) {
+        follow_set.push((Vec::from(list), id));
+    }
 }
 
 impl GrammarGenerator {

@@ -20,7 +20,9 @@ pub fn define_lang_ll() -> (Tokenizer, Grammar) {
             TokenPattern::Surround("//", "\n|$", "")
     ],
     // Ignore characters
-    TokenPattern::Single("[[:space:]]+")
+    TokenPattern::Single("[[:space:]]+"),
+    // Preprocessor
+    None
     );
 
     let mut gram_gen = GrammarGenerator::new();
@@ -61,10 +63,12 @@ pub fn define_lang_lr() -> (Tokenizer, Grammar) {
         // Comment
         TokenPattern::Surround("//", "\n|$", ""),
         // EndRule
-        TokenPattern::Single(";")
+        TokenPattern::Single("\n+[[:space:]]*")
     ],
     // Ignore characters
-    TokenPattern::Single("[[:space:]]+")
+    TokenPattern::Single("[[:space:]]+"),
+    // Preprocessor
+    Some(|s| String::from(s.trim()) + "\n")
     );
 
     let mut gram_gen = GrammarGenerator::new();
@@ -172,14 +176,15 @@ mod tests {
         assert_eq!(gram.is_parseable_lr(), true);
         // assert_eq!(parser.get_required_lookahead(), 2);
 
-        let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3;\n\n  \n //comment here  \nlhs2 -> rhs2_1;\nlhs3 -> rhs3_1 rhs3_2;";
+        let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n //comment here  \nlhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2\n//comment";
         let tokens = tok.tokenize(code).unwrap();
 
         let check = vec![
-            vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3", ";"],
+            vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3", "\n\n  \n "],
             vec!["//comment here  \n"],
-            vec!["lhs2", "->", "rhs2_1", ";"],
-            vec!["lhs3", "->", "rhs3_1", "rhs3_2", ";"],
+            vec!["lhs2", "->", "rhs2_1", "\n"],
+            vec!["lhs3", "->", "rhs3_1", "rhs3_2", "\n"],
+            vec!["//comment\n"],
         ];
 
         assert_eq!(tokens.len(), check.iter().fold(0, |acc, v| acc + v.len()) + 1);
@@ -195,6 +200,6 @@ mod tests {
 
         let nodes = parser.parse(&tokens, 0).unwrap();
 
-        // parser::display_ast(0, &nodes, &gram, 0);
+        // parser::display_ast(nodes.len()-1, &nodes, &gram, 0);
     }
 }

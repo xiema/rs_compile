@@ -77,6 +77,7 @@ impl Token {
 pub struct Tokenizer {
     re_ignore: TokenMatcher,
     token_matchers: Vec<TokenMatcher>,
+    preprocessor: Option<fn(&str) -> String>,
 }
 
 impl Tokenizer {
@@ -103,32 +104,28 @@ impl Tokenizer {
         }
     }
 
-    pub fn new(tok: Vec<TokenPattern>, ign: TokenPattern) -> Self {
+    pub fn new(tok: Vec<TokenPattern>, ign: TokenPattern, preprocessor: Option<fn(&str) -> String>) -> Self {
         Self {
             re_ignore: Tokenizer::make_re(&ign),
             token_matchers: tok.iter().map(|s| Tokenizer::make_re(s)).collect(),
+            preprocessor: preprocessor,
         }
     }
 
     pub fn tokenize(&mut self, in_str: &str) -> Result<Vec<Token>, TokenizationErr> {
         let mut tokens: Vec<Token> = Vec::new();
-        let re_ws1 = Regex::new("^[[:space:]]*").unwrap();
-        let re_ws2 = Regex::new("[[:space:]]*$").unwrap();
-        let start = match re_ws1.find(in_str) {
-            Some(m) => m.end(),
-            None => 0,
-        };
-        let end = match re_ws2.find(in_str) {
-            Some(m) => m.start(),
-            None => in_str.len(),
+
+        let processed_str = match self.preprocessor {
+            None => String::from(in_str),
+            Some(f) => f(in_str),
         };
 
-        let mut pos = start;
+        let mut pos = 0;
 
-        'main: while pos < end {
+        'main: while pos < processed_str.len() {
             // match tokens
             for (i, matcher) in self.token_matchers.iter().enumerate() {
-                match matcher.find(&in_str[pos..]) {
+                match matcher.find(&processed_str[pos..]) {
                     Some((tok, adv)) => {
                         pos += adv;
                         tokens.push(Token::new(tok.as_str(), i as TokenTypeId));
@@ -139,7 +136,7 @@ impl Tokenizer {
             }
 
             // match ignore
-            match &self.re_ignore.find(&in_str[pos..]) {
+            match &self.re_ignore.find(&processed_str[pos..]) {
                 Some((_, adv)) => {
                     pos += adv;
                     continue 'main;
@@ -189,7 +186,9 @@ mod tests {
             TokenPattern::Single("[[:alnum:]]+")
         ],
         // Ignore
-            TokenPattern::Single("[[:space:]&&[^\n]]+")
+            TokenPattern::Single("[[:space:]&&[^\n]]+"),
+        // Preprocessor
+            Some(|s| String::from(s.trim()))
         );
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2//comment here\n  \n  line 3 still line/*multi-line comment 1\nmulti-line comment 2 \\*/  */\n\n  oops   line 4 now // comment with \\\nescape\n\n\" between  \\\" quotes  \\\\\"\n\"more quotes\"";
@@ -229,7 +228,8 @@ mod tests {
             TokenPattern::Single("\n+[[:space:]]*"),
             TokenPattern::Single("([[:^space:]&&[^,]]+)")
         ], 
-        TokenPattern::Single("[[:space:]&&[^\n]]+")
+        TokenPattern::Single("[[:space:]&&[^\n]]+"),
+            None
         );
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
