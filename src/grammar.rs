@@ -13,6 +13,12 @@ pub enum GvarType {
 
 type FollowSet = Vec<(Vec<GvarId>, GvarId)>;
 
+pub enum ParseAction {
+    Shift(usize),
+    Reduce(GvarId, ProductionId),
+    ShiftReduce(GvarId, ProductionId),
+}
+
 fn has_follow(follow_set: &FollowSet, list1: &[GvarId], id1: GvarId) -> bool {
     for (list2, id2) in follow_set {
         if list1.eq(list2) && id1.eq(id2) {
@@ -37,6 +43,7 @@ pub struct Gvar {
     pub productions: Vec<Vec<GvarId>>,
     pub prod_map: ProdMap,
     pub follow_set: FollowSet,
+    pub follow_tokens: HashSet<GvarId>,
     pub first_set: HashSet<GvarId>,
 }
 
@@ -47,6 +54,7 @@ pub struct Grammar {
     pub class: GrammarClass,
     pub gvar_id_map: HashMap<String, GvarId>,
     pub token_gvar_map: HashMap<TokenTypeId, GvarId>,
+    pub parse_table_lr: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>>,
 }
 
 pub struct GrammarGenerator {
@@ -72,23 +80,22 @@ impl GrammarGenerator {
     pub fn generate(&mut self) -> Grammar {
         self.get_follow_sets();
         self.get_first_sets();
-        // show_follow_sets(&self.gvars);
-
-        // for i in 0..self.gvars.len() {
-        //     self.gvars[i].follow_set = self.get_follow_set(i);
-        // }
+        self.get_follow_tokens();
         
         if !self.class.1 {
             for i in 0..self.gvars.len() {
-                // println!("Finding ProdMap for {}", &self.gvars[i].name);
-                self.gvars[i].prod_map = self.get_prod_map(i);
+                println!("Finding ProdMap for {}", &self.gvars[i].name);
+                self.gvars[i].prod_map = self.get_prod_mapll(i);
             }
 
             // get required lookahead        
             let n = self.gvars.iter().fold(0,
                 |acc, x| std::cmp::max(acc, x.prod_map.iter().fold(0, 
                 |acc, x| std::cmp::max(acc, x.0))));
-            self.class = (self.class.0, self.class.1, n as i32);
+            self.class = (self.class.0, self.class.1, n as i32);            
+        }
+        else {
+            self.get_prod_maplr();
         }
 
 
@@ -97,6 +104,7 @@ impl GrammarGenerator {
             class: self.class,
             gvar_id_map: HashMap::new(),
             token_gvar_map: HashMap::new(),
+            parse_table_lr: if self.class.1 { self.get_prod_maplr() } else { Vec::new() } ,
         };
 
         swap(&mut self.gvars, &mut gram.gvars);
@@ -104,6 +112,41 @@ impl GrammarGenerator {
         swap(&mut self.token_gvar_map, &mut gram.token_gvar_map);
 
         gram
+    }
+
+    fn get_follow_tokens(&mut self) {
+        loop {
+            let mut modified = false;
+
+            for i in 0..self.gvars.len() {
+                let mut follow_tokens = HashSet::new();
+
+                for (fol, _) in &self.gvars[i].follow_set {
+                    let j = fol[0];
+                    match self.gvars[j].gvar_type {
+                        GvarType::Terminal => {
+                            if !self.gvars[i].follow_tokens.contains(&j) {
+                                follow_tokens.insert(j);
+                            }
+                        },
+                        GvarType::NonTerminal => {
+                            for k in &self.gvars[j].follow_tokens {
+                                if !self.gvars[i].follow_tokens.contains(k) {
+                                    follow_tokens.insert(*k);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if follow_tokens.len() > 0 {
+                    modified = true;
+                    self.gvars[i].follow_tokens.extend(follow_tokens);
+                }
+            }
+
+            if !modified { break; }
+        }
     }
 
     fn get_first_sets(&mut self) {
@@ -206,7 +249,7 @@ impl GrammarGenerator {
         new_follow_set
     }
 
-    fn get_prod_map(&self, gvar_id: GvarId) -> ProdMap {
+    fn get_prod_mapll(&self, gvar_id: GvarId) -> ProdMap {
         let mut prod_map: ProdMap = Vec::new();
 
         if self.gvars[gvar_id].productions.len() == 1 {
@@ -313,6 +356,126 @@ impl GrammarGenerator {
 
         prod_map
     }
+
+    fn get_prod_maplr(&self) -> Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>> {
+        // add initial state
+
+        let mut table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>> = Vec::new();
+        let mut state_defs: Vec<HashSet<(GvarId, ProductionId, usize)>> = Vec::new();
+
+        let mut cur_state_id = 0;
+        
+        // starting state
+        let mut state_def = HashSet::new();
+        state_def.insert((0, 0, 0));
+        state_defs.push(state_def);
+
+        while cur_state_id < state_defs.len() {
+            let mut closures = HashSet::new();
+            let mut follow_ids = HashSet::new();
+            let mut action_map: HashMap<GvarId, ParseAction> = HashMap::new();
+
+            // get closures and follow ids
+            for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
+                if *prod_pos < self.gvars[*gvar_id].productions[*prod_id].len() {
+                    let id = self.gvars[*gvar_id].productions[*prod_id][*prod_pos];
+                    if matches!(self.gvars[id].gvar_type, GvarType::NonTerminal) {
+                        for i in 0..self.gvars[id].productions.len() {
+                            closures.insert((id, i));
+                        }
+                    }
+                    follow_ids.insert(id);
+                }
+            }
+            loop {
+                let mut new_closures = HashSet::new();
+                for (gvar_id, prod_id) in &closures {
+                    let id = self.gvars[*gvar_id].productions[*prod_id][0];
+                    if matches!(self.gvars[id].gvar_type, GvarType::NonTerminal) {
+                        for i in 0..self.gvars[id].productions.len() {
+                            let new_closure = (id, i);
+                            if !closures.contains(&new_closure) {
+                                new_closures.insert(new_closure);
+                            }
+                        }
+                    }
+                    follow_ids.insert(id);
+                }
+                if new_closures.is_empty() { break; }
+                closures.extend(new_closures);
+            }
+
+            // if handle at end of any basis, add REDUCE action
+            let mut seen = HashSet::new();
+            for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
+                if *prod_pos == self.gvars[*gvar_id].productions[*prod_id].len() {
+                    for id in &self.gvars[*gvar_id].follow_tokens {
+                        if follow_ids.contains(&id) || seen.contains(&id) {
+                            panic!("Grammar is not LR(1)");
+                        }
+                        action_map.insert(*id, ParseAction::Reduce(*gvar_id, *prod_id));
+                        seen.insert(id);
+                    }
+                }
+            }
+
+            // actions for each follow id
+            for follow_id in follow_ids {
+                let mut new_state = HashSet::new();
+                let mut reduce = false;
+                
+                // bases
+                for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
+                    if *prod_pos < self.gvars[*gvar_id].productions[*prod_id].len() {
+                        let id = self.gvars[*gvar_id].productions[*prod_id][*prod_pos];
+                        if id == follow_id {
+                            new_state.insert((*gvar_id, *prod_id, prod_pos + 1));
+                            reduce |= (prod_pos + 1 == self.gvars[*gvar_id].productions[*prod_id].len());
+                        }
+                    }
+                }
+                // closures
+                for (gvar_id, prod_id) in &closures {
+                    let id = self.gvars[*gvar_id].productions[*prod_id][0];
+                    if id == follow_id {
+                        new_state.insert((*gvar_id, *prod_id, 1));
+                        reduce |= (1 == self.gvars[*gvar_id].productions[*prod_id].len());
+                    }
+                }
+
+                if new_state.len() == 1 && reduce {
+                    // shift-reduce a possible production if it is the only one compatible with the follow_id
+                    for (gvar_id, prod_id, prod_pos) in &new_state {
+                        action_map.insert(follow_id, ParseAction::ShiftReduce(*gvar_id, *prod_id));
+                    }
+                }
+                else {
+                    // shift
+
+                    // add the new state if it is unique, or else get the existing state_id
+                    let new_state_id = match state_defs.iter().enumerate()
+                        .find(|(i, state_def)| 
+                            new_state.eq(&state_def) && state_def.eq(&&new_state)
+                    ) {
+                        None => {
+                            state_defs.push(new_state);
+                            state_defs.len() - 1
+                        },
+                        Some((id, _)) => {
+                            id
+                        }
+                    };
+                    action_map.insert(follow_id, ParseAction::Shift(new_state_id));
+                }
+            }
+
+            table.push(vec![(1, action_map)]);
+
+            cur_state_id += 1;
+        }
+
+        table
+    }
     
     pub fn new_nonterm(&mut self, name: &str) -> GvarId {
         let new_gvar_id = self.gvars.len();
@@ -327,6 +490,7 @@ impl GrammarGenerator {
             prod_map: Vec::new(),
             follow_set: FollowSet::new(),
             first_set: HashSet::new(),
+            follow_tokens: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);
@@ -347,6 +511,7 @@ impl GrammarGenerator {
             prod_map: Vec::new(),
             follow_set: FollowSet::new(),
             first_set: HashSet::new(),
+            follow_tokens: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);

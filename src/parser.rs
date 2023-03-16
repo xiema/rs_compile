@@ -1,6 +1,6 @@
 use std::collections::{VecDeque};
 
-use crate::grammar::{GvarId, ProductionId, Grammar, GvarType};
+use crate::grammar::{GvarId, ProductionId, Grammar, GvarType, ParseAction};
 use crate::tokenizer::{Token};
 
 type NodeId = usize;
@@ -109,163 +109,61 @@ impl ParserLR {
 impl Parser for ParserLR {
     fn parse(&mut self, grammar: &Grammar, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>, &str> {
         let mut nodes: Vec<Node> = Vec::new();
-        let mut basis: Vec<(usize, Vec<(GvarId, ProductionId, usize)>)> = Vec::new();
-        let mut closure = Vec::new();
-        let mut seq = Vec::new();
+
+        let mut states: Vec<usize> = Vec::new();
+        let mut node_stack: Vec<NodeId> = Vec::new();
+        states.push(0);
         let mut pos = 0;
 
-        // get initial
-        closure.push((root, 0, 0));
+        nodes.push(self.new_node(0, grammar.token_gvar_map[&tokens[pos].token_type], None));
 
         loop {
-            let node = self.new_node(nodes.len(), grammar.token_gvar_map[&tokens[pos].token_type], None);
-            seq.push(node.id);
-            nodes.push(node);
-            let mut seq_pos = seq.len() - 1;
+            let next_node_id = nodes.len() - 1;
+            if nodes[next_node_id].gvar_id == 0 { break; }
 
-            loop {
+            let state_id = states.last().unwrap();
+            let (i, map) = &grammar.parse_table_lr[*state_id][0];
 
-                let mut app = Vec::new();
+            match map[&nodes[next_node_id].gvar_id] {
+                ParseAction::Shift(next_state) => {
+                    node_stack.push(next_node_id);
+                    states.push(next_state);
+                    pos += 1;
+                    let next_node_id = nodes.len();
+                    nodes.push(self.new_node(next_node_id, grammar.token_gvar_map[&tokens[pos].token_type], None));
+                },
+                ParseAction::Reduce(gvar_id, prod_id) => {
+                    let next_node_id = nodes.len();
+                    nodes.push(self.new_node(next_node_id, gvar_id, None));
 
-                closure.retain(|(gvar_id, prod_id, start_pos)| {
-                    let id_at = grammar.gvars[*gvar_id].productions[*prod_id][seq_pos - start_pos];
-                    match grammar.gvars[id_at].gvar_type {
-                        GvarType::Terminal => true,
-                        GvarType::NonTerminal => {
-                            if basis.len() == 0 || basis.last().unwrap().0 < seq_pos {
-                                basis.push((seq_pos, vec![]));
-                            }
-                            let (_, b) = basis.last_mut().unwrap();
-
-                            let x = (*gvar_id, *prod_id, *start_pos);
-                            if !b.contains(&x) {
-                                b.push(x);
-                            }
-                            for id in 0..grammar.gvars[id_at].productions.len() {
-                                let x = (id_at, id, seq_pos);
-                                if !app.contains(&x) && !b.contains(&x) {
-                                    app.push(x);
-                                }
-                            }
-                            false
-                        }
+                    let pop_count = grammar.gvars[gvar_id].productions[prod_id].len();
+                    for _ in 0..pop_count {
+                        states.pop();
+                        let node_id = node_stack.pop().unwrap();
+                        nodes[node_id].parent = Some(next_node_id);
+                        nodes[next_node_id].children.push(node_id);
                     }
-                });
+                    nodes[next_node_id].children.reverse();
+                },
+                ParseAction::ShiftReduce(gvar_id, prod_id) => {
+                    let child_node_id = next_node_id;
 
-                // prevent infinite left-recursion
-                app.retain(|x| !closure.contains(x));
+                    let next_node_id = nodes.len();
+                    nodes.push(self.new_node(next_node_id, gvar_id, None));
 
-                if app.is_empty() {
-                    break;
-                }
-                else {
-                    closure.append(&mut app);
-                }
+                    nodes[child_node_id].parent = Some(next_node_id);
+                    nodes[next_node_id].children.push(child_node_id);
+
+                    let pop_count = grammar.gvars[gvar_id].productions[prod_id].len() - 1;
+                    for _ in 0..pop_count {
+                        states.pop();
+                        let node_id = node_stack.pop().unwrap();
+                        nodes[node_id].parent = Some(next_node_id);
+                        nodes[next_node_id].children.push(node_id);
+                    }
+                    nodes[next_node_id].children.reverse();
+                },
             }
-
-            loop {
-                // remove unmatched closures or reduce
-                let mut reduce = None;
-                closure.retain(|(gvar_id, prod_id, start_pos)| {
-                    if reduce.is_some() { return false; }
-
-                    let id = grammar.gvars[*gvar_id].productions[*prod_id][seq_pos-start_pos];
-                    match grammar.gvars[id].gvar_type {
-                        GvarType::Terminal => {
-                            if nodes[seq[seq_pos]].gvar_id == id {
-                                if grammar.gvars[*gvar_id].productions[*prod_id].len() - 1 == seq_pos - start_pos {
-                                    // println!("Reducing: {} {}", grammar.gvars[*gvar_id].name, prod_id);
-                                    reduce = Some((*gvar_id, *prod_id, *start_pos));
-                                }
-                                return true;
-                            }
-                            return false;
-                        },
-                        GvarType::NonTerminal => {
-                            if grammar.gvars[id].first_set.contains(&nodes[seq[seq_pos]].gvar_id) {
-                                if grammar.gvars[*gvar_id].productions[*prod_id].len() - 1 == seq_pos - start_pos {
-                                    // println!("Reducing: {} {}", grammar.gvars[*gvar_id].name, prod_id);
-                                    reduce = Some((*gvar_id, *prod_id, *start_pos));
-                                }
-                                return true;
-                            }
-                            return false;
-                        }
-                    }
-                });
-
-                if let Some((gvar_id, prod_id, start_pos)) = reduce {
-                    loop {
-                        if let Some((x, _)) = basis.last() {
-                            if *x > start_pos {
-                                basis.pop();
-                                continue;
-                            }
-                        }
-                        break;
-                    }
-
-                    // create nodes
-                    let mut node = self.new_node(nodes.len(), gvar_id, None);
-                    node.prod_id = Some(prod_id);
-                    for id in &seq[start_pos..] {
-                        nodes[*id].parent = Some(node.id);
-                        node.children.push(*id);
-                    }
-                    seq.truncate(start_pos);
-                    seq.push(node.id);
-                    nodes.push(node);
-                    seq_pos = seq.len() - 1;
-
-
-                    // new closure
-                    if basis.len() > 0 {
-                        closure = basis.last().unwrap().1.clone();
-                        
-                        // re-add basis
-                        closure.retain(|(id, prod_id, start_pos)| {
-                            let id_at = grammar.gvars[*id].productions[*prod_id][seq_pos - start_pos];
-                            // we are sure it's a nonterm in id_at
-                            match grammar.gvars[id_at].gvar_type {
-                                GvarType::Terminal => panic!("Terminal at handle of basis"),
-                                GvarType::NonTerminal => {
-                                    if id_at == gvar_id {
-                                        return true;
-                                    }
-                                    else if grammar.gvars[id_at].first_set.contains(&gvar_id) {
-                                        if basis.len() == 0 || basis.last().unwrap().0 < seq_pos {
-                                            basis.push((seq_pos, vec![]));
-                                        }
-                                        let (_, b) = basis.last_mut().unwrap();
-    
-                                        let x = (*id, *prod_id, *start_pos);
-                                        if !b.contains(&x) {
-                                            b.push(x);
-                                        }                      
-                                    }
-                                    return false;
-                                }
-                            }
-                        });
-                    }
-
-                    // try to reduce again
-                    continue;
-                }
-
-                break;
-            }
-
-            pos += 1;
-
-            if closure.is_empty() { break; }
-            if pos > tokens.len() {
-                panic!("Missing tokens");
-            }
-        }
-
-        if pos < tokens.len() {
-            panic!("Excess tokens: {}", tokens.len() - pos);
         }
 
         Ok(nodes)
