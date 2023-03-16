@@ -177,6 +177,23 @@ impl ParserLL {
         }
         return Err("Couldn't find production");
     }
+
+    pub fn display_parse_table(&self) {
+        for (i, gvar) in self.grammar.gvars.iter().enumerate() {
+            if self.parse_table[i].len() > 0 {
+                println!("{}", gvar.name);
+                for (lookahead, map) in &self.parse_table[i] {
+                    for (tok_id, prod_id) in map {
+                        print!("  ({}) {} = ", lookahead, self.grammar.gvars[self.grammar.token_gvar_map[tok_id]].name);
+                        for gvar_id in &gvar.productions[*prod_id] {
+                            print!("{} ", self.grammar.gvars[*gvar_id].name);
+                        }
+                        print!("\n");
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Parser for ParserLL {

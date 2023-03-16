@@ -14,12 +14,13 @@ pub enum ParseAction {
 pub struct ParserLR {
     grammar: Grammar,
     parse_table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>>,
+    state_defs: Vec<HashSet<(GvarId, ProductionId, usize)>>,
     lookahead: usize,
 }
 
 impl ParserLR {
     pub fn new(grammar: &Grammar) -> Self {
-        let table = Self::get_parse_table(grammar);
+        let (state_defs, table) = Self::get_parse_table(grammar);
         let n = table.iter().fold(0, 
                 |acc, x| 
                     std::cmp::max(acc, x.iter().fold(0,
@@ -29,6 +30,7 @@ impl ParserLR {
         Self {
             grammar: grammar.clone(),
             parse_table: table,
+            state_defs: state_defs,
             lookahead: n,
         }
     }
@@ -48,7 +50,7 @@ impl ParserLR {
     /// Creates a LR Parse Table
     /// Creates Maps of Terminal GvarIds to ParseActions for each lookahead position.
     /// Currently only creates 1 Map at lookahead=1.
-    fn get_parse_table(grammar: &Grammar) -> Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>> {
+    fn get_parse_table(grammar: &Grammar) -> (Vec<HashSet<(GvarId, ProductionId, usize)>>, Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>>) {
         let mut table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>> = Vec::new();
         let mut state_defs: Vec<HashSet<(GvarId, ProductionId, usize)>> = Vec::new();
 
@@ -170,7 +172,50 @@ impl ParserLR {
             cur_state_id += 1;
         }
 
-        table
+        (state_defs, table)
+    }
+
+    pub fn display_parse_table(&self) {
+        for (i, state_def) in self.state_defs.iter().enumerate() {
+            println!("State {}:", i);
+
+            for (gvar_id, prod_id, prod_pos) in state_def {
+                print!("  {} --> ", self.grammar.gvars[*gvar_id].name);
+                for (j, id) in self.grammar.gvars[*gvar_id].productions[*prod_id].iter().enumerate() {
+                    if j == *prod_pos {
+                        print!(". ");
+                    }
+                    print!("{} ", self.grammar.gvars[*id].name);
+                }
+                print!("\n")
+            }
+
+            print!("* * * * *\n");
+
+            for (lookahead, map) in &self.parse_table[i] {
+                for (tok_id, action) in map {
+                    print!("  ({}) {} = ", lookahead, self.grammar.gvars[*tok_id].name);
+                    match action {
+                        ParseAction::Shift(next_state) => print!("Shift & Goto {}", next_state),
+                        ParseAction::Reduce(gvar_id, prod_id) => {
+                            print!("Reduce {} -> ", self.grammar.gvars[*gvar_id].name);
+                            for id in &self.grammar.gvars[*gvar_id].productions[*prod_id] {
+                                print!("{} ", self.grammar.gvars[*id].name);
+                            }
+                        },
+                        ParseAction::ShiftReduce(gvar_id, prod_id) => {
+                            print!("Shift & Reduce {} -> ", self.grammar.gvars[*gvar_id].name);
+                            for id in &self.grammar.gvars[*gvar_id].productions[*prod_id] {
+                                print!("{} ", self.grammar.gvars[*id].name);
+                            }
+                        }
+                    }
+                    print!("\n");
+                }
+            }
+
+            print!("\n");
+        }
     }
 }
 
