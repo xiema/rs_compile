@@ -33,7 +33,7 @@ A preprocessor function can also be optionally given during construction of the 
 
 # Parser/Grammar
 
-Table-driven, deterministic `Parser` that creates an abstract syntax tree from a sequence of tokens (such as one created by `Tokenizer`). The grammar rules can be customized prior to parsing by creating a custom `Grammar` instance. The output is a tree of connected `Node` objects, each associated to a `Gvar` (_Grammar Variable_) as defined in the grammar.
+Table-driven, deterministic `Parser` that creates a parse tree from a sequence of tokens (such as one created by `Tokenizer`). The grammar rules can be customized prior to parsing by creating a custom `Grammar` instance. The output is a tree of connected `Node` objects, each associated to a `Gvar` (_Grammar Variable_) as defined in the grammar.
 
 Currently only accepts _LL(k)_ unambiguous grammars for any _k_ and _LR(1)_ grammars.
 
@@ -51,7 +51,7 @@ Note: The parser needs all input tokens to be defined in the grammar, so if usin
 
 ### ParserLL
 
-A parser for _LL(k)_ grammars (_Left-to-right, leftmost derivation_). Compatible with _LL(k)_ grammars of any _k_ as long as the grammar is unambiguous and the lookahead does not need to go through a recursion. For example, the following grammar is incompatible:
+A top-down parser for _LL(k)_ grammars (_Left-to-right, leftmost derivation_). Compatible with _LL(k)_ grammars of any _k_ as long as the grammar is unambiguous and the lookahead does not need to go through a recursion. For example, the following grammar is incompatible:
 
     S -> Ay | Bz
     A -> xA | eps
@@ -78,7 +78,7 @@ The parser cannot tell whether to reduce the prefix sequence of `x`s to `A`s or 
 
 ### ParserLR
 
-An _LALR(1)_ Parser that can parse unambiguous _LR(1)_ grammars. Uses a parse table to select the proper action based on the current state and the next token. Internally, the possible actions are `Shift`, `Reduce` and `ShiftReduce`.
+A bottom-up _LALR(1)_ (_Look Ahead, left-to-right, rightmost derivation_) Parser that can parse unambiguous _LR(1)_ grammars. Uses a parse table to select the proper action based on the current state and the next token. Internally, the possible actions are `Shift`, `Reduce` and `ShiftReduce`.
 
 Currently only support 1 token of lookahead without recursion. The following grammar is unambiguous but incompatible:
 
@@ -113,3 +113,4 @@ This grammar is requires more than 1 lookahead token in order to decide whether 
 - Configurable disambiguation
 - More descriptive errors
 - Implied EOF token
+- Grammar conversion

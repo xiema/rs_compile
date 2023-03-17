@@ -367,7 +367,7 @@ mod tests {
         let parser = ParserLR::new(&gram);
         let nodes = parser.parse(&tokens).unwrap();
 
-        // display_ast(nodes.len()-1, &nodes, &gram, 0);
+        // display_tree(nodes.len()-1, &nodes, &gram, 0);
     }
 
     #[allow(unused_variables)]
@@ -393,7 +393,7 @@ mod tests {
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
-        // display_ast(nodes.len()-1, &nodes, &gram, 0);
+        // display_tree(nodes.len()-1, &nodes, &gram, 0);
     }
 
     #[allow(unused_variables)]
@@ -434,6 +434,6 @@ mod tests {
         let parser = ParserLR::new(&gram);
         let nodes = parser.parse(&tokens).unwrap();
 
-        // display_ast(nodes.len()-1, &nodes, &gram, 0);
+        // display_tree(nodes.len()-1, &nodes, &gram, 0);
     }
 }

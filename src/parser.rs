@@ -27,7 +27,7 @@ pub trait Parser {
 }
 
 #[allow(dead_code)]
-pub fn display_ast(node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar, level: usize) {
+pub fn display_tree(node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar, level: usize) {
     let indent = String::from("  ").repeat(level);
     match gram.gvars[nodes[node_id].gvar_id].gvar_type {
         GvarType::Terminal => {
@@ -42,6 +42,6 @@ pub fn display_ast(node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar, level: us
         None => println!()
     }
     for child in &nodes[node_id].children {
-        display_ast(*child, nodes, gram, level + 1);
+        display_tree(*child, nodes, gram, level + 1);
     }
 }

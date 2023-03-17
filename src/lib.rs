@@ -149,7 +149,7 @@ mod tests {
 
         let nodes = parser.parse(&tokens).unwrap();
 
-        // parser::display_ast(0, &nodes, &gram, 0);
+        // parser::display_tree(0, &nodes, &gram, 0);
     }
 
     #[allow(unused_variables)]
@@ -200,6 +200,6 @@ mod tests {
 
         let nodes = parser.parse(&tokens).unwrap();
 
-        // parser::display_ast(nodes.len()-1, &nodes, &gram, 0);
+        // parser::display_tree(nodes.len()-1, &nodes, &gram, 0);
     }
 }

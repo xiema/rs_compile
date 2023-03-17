@@ -14,7 +14,11 @@ pub struct Token {
 }
 
 pub enum TokenPattern<'a> {
+    // Matches the given pattern and returns it
     Single(&'a str),
+    // Matches pattern1, if successful matches pattern2, then returns the whole sequence in between the two
+    //   If non-blank pattern3 is supplied, it is used as an escape sequence for preventing matching of the
+    //   pattern2 from characters exactly right after the pattern3 match
     Surround(&'a str, &'a str, &'a str),
 }
 
