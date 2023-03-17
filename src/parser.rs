@@ -30,7 +30,7 @@ pub trait Parser {
 pub fn display_tree(node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar, level: usize) {
     let indent = String::from("  ").repeat(level);
     match gram.gvars[nodes[node_id].gvar_id].gvar_type {
-        GvarType::Terminal => {
+        GvarType::Terminal(_) => {
             print!("{}{}", indent, gram.gvars[nodes[node_id].gvar_id].name);
         },
         GvarType::NonTerminal => {

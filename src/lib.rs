@@ -7,55 +7,8 @@ use tokenizer::{TokenTypeId, TokenPattern};
 use tokenizer::Tokenizer;
 use grammar::Grammar;
 
-
-// Define the tokenizer and meta-grammar (as LL) that can be used to parse a BNF grammar
-pub fn define_lang_ll() -> (Tokenizer, Grammar) {
-    let tok = Tokenizer::new( vec![
-    // Tokens
-        // Production Symbol
-            TokenPattern::Single("->"),
-        // Symbol/Identifier
-            TokenPattern::Single("[[:word:]]+"),
-        // Comment
-            TokenPattern::Surround("//", "\n|$", "")
-    ],
-    // Ignore characters
-    TokenPattern::Single("[[:space:]]+"),
-    // Preprocessor
-    None
-    );
-
-    let mut gram_gen = GrammarGenerator::new();
-
-    gram_gen.new_nonterm("Language");
-    gram_gen.new_nonterm("Rule_List");
-    gram_gen.new_nonterm("Rule_List_Tail");
-    gram_gen.new_nonterm("Rule");
-    gram_gen.new_nonterm("RHS_Tail");
-    gram_gen.new_term("Comment", 2 as TokenTypeId);
-    gram_gen.new_term("Identifier", 1 as TokenTypeId);
-    gram_gen.new_term("Production_Symbol", 0 as TokenTypeId);
-    gram_gen.new_term("EOF", -1 as TokenTypeId);
-
-    gram_gen.make_prod("Language", vec!["Rule_List", "EOF"]);
-    gram_gen.make_prod("Rule_List", vec!["Rule", "Rule_List_Tail"]);
-    gram_gen.make_prod("Rule_List", vec!["Comment", "Rule_List_Tail"]);
-    gram_gen.make_prod("Rule_List_Tail", vec!["Rule", "Rule_List_Tail"]);
-    gram_gen.make_prod("Rule_List_Tail", vec!["Comment", "Rule_List_Tail"]);
-    gram_gen.make_eps("Rule_List_Tail");
-    gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "Identifier", "RHS_Tail"]);
-    gram_gen.make_prod("RHS_Tail", vec!["Identifier", "RHS_Tail"]);
-    gram_gen.make_eps("RHS_Tail");
-    
-    let gram = gram_gen.generate();
-
-    return (tok, gram);
-}
-
-
-// Define the tokenizer and meta-grammar (as LR) that can be used to parse a BNF grammar
-pub fn define_lang_lr() -> (Tokenizer, Grammar) {
-    let tok = Tokenizer::new( vec![
+fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
+    let tokenizer = Tokenizer::new( vec![
         // Tokens
         // Production Symbol
         TokenPattern::Single("->"),
@@ -93,7 +46,22 @@ pub fn define_lang_lr() -> (Tokenizer, Grammar) {
     gram_gen.make_prod("RHS", vec!["RHS", "Identifier"]);
     gram_gen.make_prod("RHS", vec!["Identifier"]);
 
-    
+    (tokenizer, gram_gen)
+}
+
+
+// Define the tokenizer and meta-grammar (as LL) that can be used to parse a BNF grammar
+pub fn define_lang_ll() -> (Tokenizer, Grammar) {
+    let (tok, mut gram_gen) = create_lang_gen();
+    let gram = gram_gen.generate_ll();
+
+    return (tok, gram);
+}
+
+
+// Define the tokenizer and meta-grammar (as LR) that can be used to parse a BNF grammar
+pub fn define_lang_lr() -> (Tokenizer, Grammar) {
+    let (tok, mut gram_gen) = create_lang_gen();
     let gram = gram_gen.generate();
 
     return (tok, gram);
@@ -124,16 +92,16 @@ mod tests {
         // grammar::show_prod_maps(&gram.gvars);
 
         assert_eq!(gram.is_parseable_ll(), true);
-        assert_eq!(parser.get_required_lookahead(), 2);
+        assert_eq!(parser.get_required_lookahead(), 1);
 
         let code = "\n   \n \n\nlhs1 -> rhs1_1 rhs1_2 rhs1_3\n\n  \n //comment here  \nlhs2 -> rhs2_1\nlhs3 -> rhs3_1 rhs3_2";
         let tokens = tok.tokenize(code).unwrap();
 
         let check = vec![
-            vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3"],
+            vec!["lhs1", "->", "rhs1_1", "rhs1_2", "rhs1_3", "\n\n  \n "],
             vec!["//comment here  \n"],
-            vec!["lhs2", "->", "rhs2_1"],
-            vec!["lhs3", "->", "rhs3_1", "rhs3_2"],
+            vec!["lhs2", "->", "rhs2_1", "\n"],
+            vec!["lhs3", "->", "rhs3_1", "rhs3_2", "\n"],
         ];
 
         assert_eq!(tokens.len(), check.iter().fold(0, |acc, v| acc + v.len()) + 1);

@@ -1,6 +1,8 @@
-use std::collections::{HashMap};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::mem::swap;
+
+use anyhow::{Result, anyhow};
 
 use crate::tokenizer::{TokenTypeId};
 
@@ -9,7 +11,7 @@ pub type ProductionId = usize;
 
 #[derive(Clone)]
 pub enum GvarType {
-    Terminal,
+    Terminal(TokenTypeId),
     NonTerminal,
 }
 
@@ -18,7 +20,6 @@ pub struct Gvar {
     pub id: GvarId,
     pub gvar_type: GvarType,
     pub name: String,
-    pub token_type: Option<TokenTypeId>,
 
     pub productions: Vec<Vec<GvarId>>,
     pub follow_set: FollowSet,
@@ -74,10 +75,10 @@ impl GrammarGenerator {
         }
     }
 
-    /// Generate Grammar from the current configuration.
+    /// Generate Grammar directly from the current configuration.
     /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
-        self.get_follow_sets();
+        Self::get_follow_sets(&mut self.gvars);
 
         let mut gram = Grammar {
             gvars: Vec::new(),
@@ -95,34 +96,111 @@ impl GrammarGenerator {
         gram
     }
 
-    fn get_follow_sets(&mut self) {
+    /// Generate an LL Grammar recognizing the same language as generate()
+    /// Any Left-recursion is eliminated
+    pub fn generate_ll(&mut self) -> Grammar {
+        let mut gram = Grammar {
+            gvars: Vec::new(),
+            gvar_id_map: HashMap::new(),
+            token_gvar_map: HashMap::new(),
+            
+            ll_flag: true,
+            lr_flag: false,
+        };
+        
+        swap(&mut self.gvars, &mut gram.gvars);
+        swap(&mut self.gvar_id_map, &mut gram.gvar_id_map);
+        swap(&mut self.token_gvar_map, &mut gram.token_gvar_map);
+
+        // TODO: error handling
+        Self::eliminate_left_recursion(&mut gram.gvars).unwrap();
+        Self::get_follow_sets(&mut gram.gvars);
+
+        gram
+    }
+
+    fn eliminate_left_recursion(gvars: &mut Vec<Gvar>) -> Result<()> {
+        let mut new_gvars = Vec::new();
+        let mut leftrecursive = HashSet::new();
+
+        for i in 0..gvars.len() {
+            for (j, prod) in gvars[i].productions.iter().enumerate() {
+                if !prod.is_empty() && prod[0] == gvars[i].id {
+                    leftrecursive.insert(j);
+                }
+            }
+
+            if !leftrecursive.is_empty() {
+                if leftrecursive.len() == gvars[i].productions.len() {
+                    return Err(anyhow!("Grammar is missing non-left-recursive production"));
+                }
+
+                let tail_gvar_id = gvars.len() + new_gvars.len();
+                let mut tail_gvar = Gvar {
+                    id: tail_gvar_id,
+                    gvar_type: GvarType::NonTerminal,
+                    name: gvars[i].name.clone() + "'",
+                    productions: vec![vec![]],
+                    follow_set: Vec::new(),
+                };
+
+                // create new productions for original and tail gvars
+                let mut new_prods = Vec::new();
+                for (i, prod) in gvars[i].productions.iter().enumerate() {
+                    if leftrecursive.contains(&i) {
+                        // add to tail gvar
+                        let mut new_prod = prod[1..].to_vec();
+                        new_prod.push(tail_gvar_id);
+                        tail_gvar.productions.push(new_prod);
+                    }
+                    else {
+                        // add to original gvar
+                        let mut new_prod = prod.clone();
+                        new_prod.push(tail_gvar_id);
+                        new_prods.push(new_prod);
+                    }
+                }
+
+                new_gvars.push(tail_gvar);
+                swap(&mut new_prods, &mut gvars[i].productions);
+            }
+
+            leftrecursive.clear();
+        }
+
+        gvars.append(&mut new_gvars);
+
+        Ok(())
+    }
+
+    fn get_follow_sets(gvars: &mut Vec<Gvar>) {
 
         // add initial content of follow sets
-        for i in 0..self.gvars.len() {
+        for i in 0..gvars.len() {
             let mut new_follow_set = FollowSet::new();
-            for j in 0..self.gvars.len() {
-                for rhs in &self.gvars[j].productions {
+            for j in 0..gvars.len() {
+                for rhs in &gvars[j].productions {
                     for rhs_subid in 0..rhs.len() {
-                        if rhs[rhs_subid] == self.gvars[i].id {
-                            add_follow(&mut new_follow_set, &rhs[(rhs_subid+1)..], self.gvars[j].id);
+                        if rhs[rhs_subid] == gvars[i].id {
+                            add_follow(&mut new_follow_set, &rhs[(rhs_subid+1)..], gvars[j].id);
                             break;
                         }
                     }
                 }
             }
-            swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
+            swap(&mut gvars[i].follow_set, &mut new_follow_set);
         }
 
         // replace empty follow list in follow sets until none remain
         loop {
             let mut modified = false;
 
-            for i in 0.. self.gvars.len() {
+            for i in 0.. gvars.len() {
                 let mut new_follow_set = FollowSet::new();
-                for (follow_list, id_after) in &self.gvars[i].follow_set {
+                for (follow_list, id_after) in &gvars[i].follow_set {
                     if follow_list.len() == 0 {
-                        for (list2, id_after2) in &self.gvars[*id_after].follow_set {
-                            if !has_follow(&self.gvars[i].follow_set, &list2, *id_after2) {
+                        for (list2, id_after2) in &gvars[*id_after].follow_set {
+                            if !has_follow(&gvars[i].follow_set, &list2, *id_after2) {
                                 add_follow(&mut new_follow_set, &list2, *id_after2);
                                 modified = true;
                             }
@@ -133,7 +211,7 @@ impl GrammarGenerator {
                     }
                 }
 
-                swap(&mut self.gvars[i].follow_set, &mut new_follow_set);
+                swap(&mut gvars[i].follow_set, &mut new_follow_set);
             }
 
             if !modified { break; }
@@ -147,7 +225,6 @@ impl GrammarGenerator {
             id: new_gvar_id,
             gvar_type: GvarType::NonTerminal,
             name: String::from(name),
-            token_type: None,
 
             productions: Vec::new(),
             follow_set: FollowSet::new(),
@@ -163,9 +240,8 @@ impl GrammarGenerator {
 
         self.gvars.push(Gvar {
             id: new_gvar_id,
-            gvar_type: GvarType::Terminal,
+            gvar_type: GvarType::Terminal(token_type),
             name: String::from(name),
-            token_type: Some(token_type),
 
             productions: Vec::new(),
             follow_set: FollowSet::new(),
@@ -264,8 +340,8 @@ impl Display for Grammar {
         )
         .and(self.gvars.iter().try_for_each(|gvar|
             match gvar.gvar_type {
-                GvarType::Terminal => {
-                    writeln!(f, "{} --> {}", gvar.name, gvar.token_type.unwrap())
+                GvarType::Terminal(token_type_id) => {
+                    writeln!(f, "{} --> {}", gvar.name, token_type_id)
                 },
                 _ => Ok(())
             }
@@ -309,6 +385,42 @@ mod tests {
         let gram = gram_gen.generate();
 
         println!("{}", gram);
+        // show_follow_sets(&gram.gvars);
+        // show_prod_maps(&gram.gvars);
+
+        // let mut vec: Vec<Token>;
+        // vec = vec![Token {text: String::from("4"), token_type: tok_term}];
+        // assert_eq!(gram.find_next(expr, &vec).unwrap(), prod3);
+        // vec = vec![Token {text: String::from("+"), token_type: tok_op}];
+        // assert_eq!(gram.find_next(expr_tail, &vec).unwrap(), prod4);
+        // vec = vec![tok_eof];
+        // assert_eq!(gram.find_next(expr_tail, &vec).unwrap(), expr_tail_eps);
+    }
+
+    #[test]
+    fn grammar_convert_ll_test() {
+        let mut gram_gen = GrammarGenerator::new();
+
+        let tok_term: TokenTypeId = 0;
+        let tok_op: TokenTypeId = 1;
+        let tok_eof = Token::new("", -1, 0, 0, 0);
+        
+        let prog = gram_gen.new_nonterm("Program");
+        let expr_list = gram_gen.new_nonterm("Expression_List");
+        let expr = gram_gen.new_nonterm("Expression");
+        let term = gram_gen.new_term("Term", tok_term);
+        let op = gram_gen.new_term("Operator", tok_op);
+        let eof = gram_gen.new_term("EOF", tok_eof.token_type);
+
+        let prod0 = gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        let prod1 = gram_gen.make_prod("Expression_List", vec!["Expression_List", "Expression"]);
+        let prod1 = gram_gen.make_prod("Expression_List", vec!["Expression"]);
+        let prod3 = gram_gen.make_prod("Expression", vec!["Expression", "Operator", "Term"]);
+        let prod3 = gram_gen.make_prod("Expression", vec!["Term"]);
+
+        let gram = gram_gen.generate_ll();
+
+        // println!("{}", gram);
         // show_follow_sets(&gram.gvars);
         // show_prod_maps(&gram.gvars);
 

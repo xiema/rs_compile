@@ -182,7 +182,6 @@ impl Tokenizer {
 
         }.with_context(|| format!("Tokenization Error at {}:{}", line_num, line_pos))?;
 
-        // TODO: end with marker?
         tokens.push(Token::new("", -1, line_num, line_pos, pos));
 
         return Ok(tokens);

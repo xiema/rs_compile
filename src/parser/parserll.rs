@@ -96,7 +96,7 @@ impl ParserLL {
                                     }
                                     modified = true;
                                 },
-                                GvarType::Terminal => {
+                                GvarType::Terminal(_) => {
                                     // retain terminals
                                     s2.insert((*prod_id, rhs.clone(), *id_after));
                                 }
@@ -129,15 +129,18 @@ impl ParserLL {
 
                     // add this token-production pair to prod_map at this lookahead position
                     let prod_id = prod_ids[0];
-                    let token_id = grammar.gvars[*gvar_id].token_type.unwrap();
-                    new_map.insert(token_id, prod_id);
-
-                    // remove all similar productions (same lookahead token and production id, but possibly different production trees/routes)
-                    s1.retain(|(id, p, _)|
-                        *id != prod_id
-                        || grammar.gvars[p[0]].token_type.is_none()
-                        || grammar.gvars[p[0]].token_type.unwrap() != token_id
-                    );
+                    if let GvarType::Terminal(token_id) = grammar.gvars[*gvar_id].gvar_type {
+                        new_map.insert(token_id, prod_id);
+    
+                        // remove all similar productions (same lookahead token and production id, but possibly different production trees/routes)
+                        s1.retain(|(id, p, _)|
+                            *id != prod_id
+                            || match grammar.gvars[p[0]].gvar_type {
+                                GvarType::Terminal(t) => t != token_id,
+                                GvarType::NonTerminal => true,
+                            }
+                        );
+                    }
                 }
                 
                 if !new_map.is_empty() {
@@ -221,8 +224,8 @@ impl Parser for ParserLL {
                     };
 
                     match gvar.gvar_type {
-                        GvarType::Terminal => {
-                            if gvar.token_type.unwrap() == token.token_type {
+                        GvarType::Terminal(token_type_id) => {
+                            if token_type_id == token.token_type {
                                 pos += 1;
                                 nodes[cur_node_id].token = Some(token.clone());
                             }
@@ -302,6 +305,36 @@ mod tests {
         (tokenizer, gram)
     }
 
+    fn create_lang_from_lr() -> (Tokenizer, Grammar) {
+        let tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[0-9]+"),
+            TokenPattern::Single("[-+*/]")
+        ],
+            TokenPattern::Single("[[:space:]]"),
+            None
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression_List");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod("Program", vec!["Expression_List", "EOF"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression_List", "Expression"]);
+        gram_gen.make_prod("Expression_List", vec!["Expression"]);
+        gram_gen.make_prod("Expression", vec!["Expression", "Operator", "Term"]);
+        gram_gen.make_prod("Expression", vec!["Term"]);
+
+        let gram = gram_gen.generate_ll();
+
+        (tokenizer, gram)
+    }
+
     #[allow(unused_variables)]
     #[test]
     fn parserll_test() {
@@ -315,7 +348,23 @@ mod tests {
         let parser = ParserLL::new(&gram);
         let nodes = parser.parse(&tokens).unwrap();
 
-        // display_ast(0, &nodes, &gram, 0);
+        // display_tree(0, &nodes, &gram, 0);
+    }
+
+    #[allow(unused_variables)]
+    #[test]
+    fn parserll_from_lr_test() {
+        let (mut tokenizer, gram) = create_lang_from_lr();
+
+        // println!("{}", gram);
+
+        let code = "\n1 + 1\n\n2 + 2\n\n3 + 1 + 2 +2";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let parser = ParserLL::new(&gram);
+        let nodes = parser.parse(&tokens).unwrap();
+
+        // display_tree(0, &nodes, &gram, 0);
     }
 
     #[allow(unused_variables)]
@@ -343,7 +392,7 @@ mod tests {
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
-        // display_ast(0, &res.unwrap(), &gram, 0);
+        // display_tree(0, &res.unwrap(), &gram, 0);
     }
 
     #[allow(unused_variables)]
@@ -385,6 +434,6 @@ mod tests {
         let parser = ParserLL::new(&gram);
         let nodes = parser.parse(&tokens).unwrap();
 
-        // display_ast(0, &nodes, &gram, 0);
+        // display_tree(0, &nodes, &gram, 0);
     }
 }
