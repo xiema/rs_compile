@@ -22,7 +22,7 @@ pub struct Node {
 }
 
 pub trait Parser {
-    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>>;
+    fn parse(&self, tokens: &Vec<Token>) -> Result<Vec<Node>>;
     fn get_required_lookahead(&self) -> usize;
 }
 

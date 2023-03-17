@@ -199,11 +199,13 @@ impl ParserLL {
 }
 
 impl Parser for ParserLL {
-    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>> {
+    fn parse(&self, tokens: &Vec<Token>) -> Result<Vec<Node>> {
         let mut nodes: Vec<Node> = Vec::new();
         let mut stk: VecDeque<NodeId> = VecDeque::new();
         let mut pos = 0;
-        nodes.push(self.new_node(0, root, None));
+
+        // Create and push ROOT
+        nodes.push(self.new_node(0, 0, None));
         stk.push_front(0);
 
         let mut token = tokens.get(pos).with_context(|| "Empty token sequence")?;
@@ -311,7 +313,7 @@ mod tests {
         let tokens = tokenizer.tokenize(code).unwrap();
         
         let parser = ParserLL::new(&gram);
-        let nodes = parser.parse(&tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens).unwrap();
 
         // display_ast(0, &nodes, &gram, 0);
     }
@@ -326,18 +328,18 @@ mod tests {
         
         let code = "1 + 1 \n 1+ +";
         let tokens = tokenizer.tokenize(code).unwrap();
-        let res = parser.parse(&tokens, 0);
+        let res = parser.parse(&tokens);
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
         let code = "1 + 1 +";
         let tokens = tokenizer.tokenize(code).unwrap();
-        let res = parser.parse(&tokens, 0);
+        let res = parser.parse(&tokens);
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
         let tokens = vec![];
-        let res = parser.parse(&tokens, 0);
+        let res = parser.parse(&tokens);
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
@@ -381,7 +383,7 @@ mod tests {
         let tokens = tokenizer.tokenize(code).unwrap();
         
         let parser = ParserLL::new(&gram);
-        let nodes = parser.parse(&tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens).unwrap();
 
         // display_ast(0, &nodes, &gram, 0);
     }

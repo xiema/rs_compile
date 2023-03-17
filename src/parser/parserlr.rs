@@ -231,14 +231,15 @@ impl ParserLR {
 }
 
 impl Parser for ParserLR {
-    fn parse(&self, tokens: &Vec<Token>, root: GvarId) -> Result<Vec<Node>> {
+    fn parse(&self, tokens: &Vec<Token>) -> Result<Vec<Node>> {
         let mut nodes: Vec<Node> = Vec::new();
 
         // Stack of past states seen by the DFA
         let mut states: Vec<usize> = Vec::new();
         // Stack of nodes to be used in the next Reduction
         let mut node_stack: Vec<NodeId> = Vec::new();
-        states.push(root);
+        // Push starting state
+        states.push(0);
         let mut token_idx = 0;
 
         // push the first token (transformed into the associated Terminal Gvar)
@@ -249,6 +250,7 @@ impl Parser for ParserLR {
             // the last pushed element in nodes is also always the next input
             let next_node_id = nodes.len() - 1;
             let next_gvar_id = nodes[next_node_id].gvar_id;
+            // Gvar is ROOT
             if next_gvar_id == 0 { break Ok(()) }
 
             let cur_state_id = *states.last().unwrap();
@@ -361,7 +363,7 @@ mod tests {
         let tokens = tokenizer.tokenize(code).unwrap();
         
         let parser = ParserLR::new(&gram);
-        let nodes = parser.parse(&tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens).unwrap();
 
         // display_ast(nodes.len()-1, &nodes, &gram, 0);
     }
@@ -374,18 +376,18 @@ mod tests {
 
         let code = "1 + 1";
         let tokens = tokenizer.tokenize(code).unwrap();        
-        let res = parser.parse(&tokens, 0);
+        let res = parser.parse(&tokens);
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
         let code = "1 + 1\n    1";
         let tokens = tokenizer.tokenize(code).unwrap();        
-        let res = parser.parse(&tokens, 0);
+        let res = parser.parse(&tokens);
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
         let tokens = vec![];        
-        let res = parser.parse(&tokens, 0);
+        let res = parser.parse(&tokens);
         let e = res.err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
@@ -428,7 +430,7 @@ mod tests {
         let tokens = tokenizer.tokenize(code).unwrap();
         
         let parser = ParserLR::new(&gram);
-        let nodes = parser.parse(&tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens).unwrap();
 
         // display_ast(nodes.len()-1, &nodes, &gram, 0);
     }

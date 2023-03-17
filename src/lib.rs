@@ -39,10 +39,11 @@ pub fn define_lang_ll() -> (Tokenizer, Grammar) {
 
     gram_gen.make_prod("Language", vec!["Rule_List", "EOF"]);
     gram_gen.make_prod("Rule_List", vec!["Rule", "Rule_List_Tail"]);
+    gram_gen.make_prod("Rule_List", vec!["Comment", "Rule_List_Tail"]);
     gram_gen.make_prod("Rule_List_Tail", vec!["Rule", "Rule_List_Tail"]);
+    gram_gen.make_prod("Rule_List_Tail", vec!["Comment", "Rule_List_Tail"]);
     gram_gen.make_eps("Rule_List_Tail");
     gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "Identifier", "RHS_Tail"]);
-    gram_gen.make_prod("Rule", vec!["Comment"]);
     gram_gen.make_prod("RHS_Tail", vec!["Identifier", "RHS_Tail"]);
     gram_gen.make_eps("RHS_Tail");
     
@@ -85,8 +86,9 @@ pub fn define_lang_lr() -> (Tokenizer, Grammar) {
 
     gram_gen.make_prod("Language", vec!["Rule_List", "EOF"]);
     gram_gen.make_prod("Rule_List", vec!["Rule_List", "Rule"]);
+    gram_gen.make_prod("Rule_List", vec!["Rule_List", "Comment"]);
     gram_gen.make_prod("Rule_List", vec!["Rule"]);
-    gram_gen.make_prod("Rule", vec!["Comment"]);
+    gram_gen.make_prod("Rule_List", vec!["Comment"]);
     gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "RHS", "EndRule"]);
     gram_gen.make_prod("RHS", vec!["RHS", "Identifier"]);
     gram_gen.make_prod("RHS", vec!["Identifier"]);
@@ -145,7 +147,7 @@ mod tests {
         }
         assert_eq!(tokens[tokens.len()-1].token_type, -1 as TokenTypeId);
 
-        let nodes = parser.parse(&tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens).unwrap();
 
         // parser::display_ast(0, &nodes, &gram, 0);
     }
@@ -159,7 +161,7 @@ mod tests {
         
         let code = "lhs1 -> rhs1_1 rhs1_2\nlhs2 ->";
         let tokens = tok.tokenize(code).unwrap();
-        let nodes = parser.parse(&tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens).unwrap();
     }
 
     #[allow(unused_variables)]
@@ -196,7 +198,7 @@ mod tests {
         }
         assert_eq!(tokens[tokens.len()-1].token_type, -1 as TokenTypeId);
 
-        let nodes = parser.parse(&tokens, 0).unwrap();
+        let nodes = parser.parse(&tokens).unwrap();
 
         // parser::display_ast(nodes.len()-1, &nodes, &gram, 0);
     }
