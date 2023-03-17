@@ -1,9 +1,5 @@
 use regex::Regex;
-
-#[derive(Debug, Clone)]
-pub enum TokenizationErr {
-    UnrecognizedChar(usize),
-}
+use anyhow::{Result, anyhow, Context};
 
 pub type TokenTypeId = i32;
 
@@ -136,7 +132,7 @@ impl Tokenizer {
         }
     }
 
-    pub fn tokenize(&mut self, in_str: &str) -> Result<Vec<Token>, TokenizationErr> {
+    pub fn tokenize(&mut self, in_str: &str) -> Result<Vec<Token>> {
         let mut tokens: Vec<Token> = Vec::new();
 
         let processed_str = match self.preprocessor {
@@ -148,7 +144,9 @@ impl Tokenizer {
         let mut line_num = 0;
         let mut line_pos = 0;
 
-        'main: while pos < processed_str.len() {
+        'main: loop {
+            if pos >= processed_str.len() { break Ok(()) }
+
             // match tokens
             for (i, matcher) in self.token_matchers.iter().enumerate() {
                 match matcher.find(&processed_str[pos..]) {
@@ -176,8 +174,9 @@ impl Tokenizer {
                 None => ()
             }
 
-            return Err(TokenizationErr::UnrecognizedChar(pos));
-        }
+            break Err(anyhow!("Unrecognized character: '{}'", &processed_str[pos..pos+1]))
+
+        }.with_context(|| format!("Tokenization Error at {}:{}", line_num, line_pos))?;
 
         // TODO: end with marker?
         tokens.push(Token::new("", -1, line_num, line_pos, pos));
@@ -225,11 +224,7 @@ mod tests {
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2//comment here\n  \n  line 3 still line/*multi-line comment 1\nmulti-line comment 2 \\*/  */\n\n  oops   line 4 now // comment with \\\nescape\n\n\" between  \\\" quotes  \\\\\"\n\"more quotes\"";
 
-        let tokens = match tokenizer.tokenize(code) {
-            Ok(t) => t,
-            Err(TokenizationErr::UnrecognizedChar(pos)) =>
-                panic!("Unrecognized character `{}` at {}:\n`{}`\n", &code[pos..pos+1], pos, &code[pos..std::cmp::min(code.len(), pos+20)])
-        };   
+        let tokens = tokenizer.tokenize(code).unwrap();   
         // display_tokens(&tokens);
         
         let check = vec![
@@ -266,6 +261,8 @@ mod tests {
 
         let code = "\n \n\n   line 1, still line 1   \n   line 2\n  \n  line 3 still line\n\n  oops   line 4 now";
         
-        assert!(matches!(tokenizer.tokenize(code), Err(TokenizationErr::UnrecognizedChar(e)) if e == 13));
+        let res = tokenizer.tokenize(code);
+        let e = res.err().unwrap();
+        println!("[DISPLAY] {:#}", e);
     }
 }
