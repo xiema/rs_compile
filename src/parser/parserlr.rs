@@ -284,6 +284,7 @@ impl Parser for ParserLR {
                         nodes[next_node_id].children.push(node_id);
                     }
                     nodes[next_node_id].children.reverse();
+                    nodes[next_node_id].prod_id = Some(*prod_id);
                 },
                 ParseAction::ShiftReduce(gvar_id, prod_id) => {
                     let child_node_id = next_node_id;
@@ -302,6 +303,7 @@ impl Parser for ParserLR {
                         nodes[next_node_id].children.push(node_id);
                     }
                     nodes[next_node_id].children.reverse();
+                    nodes[next_node_id].prod_id = Some(*prod_id);
                 },
             }
         }.with_context(|| format!("Parse error at {}:{}", token.line_num, token.line_pos))?;
