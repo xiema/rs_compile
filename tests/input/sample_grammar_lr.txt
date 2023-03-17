@@ -1,5 +1,7 @@
 // This is a sample grammar
 Program -> StatementList EOF
 StatementList -> StatementList Statement
-Statement -> StatementType EndStatement
+Statement -> Assignment EndStatement | FunctionCall EndStatement
+Assignment -> Identifier AssignmentOp Expression
+FunctionCall -> FunctionName ( FunctionArgs )
 // End of sample grammar

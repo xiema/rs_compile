@@ -47,7 +47,7 @@ Rules for Gvar Definition:
 
 To begin the parse, the `Parser` is fed a `Vec<Token>` produced by `Tokenizer`.
 
-`GrammarGenerator` can automatically convert a _Non-LL_ `Grammar` into an _LL_ `Grammar` using left-recursion elimination.
+`GrammarGenerator` can automatically convert a _Non-LL_ `Grammar` into an _LL_ `Grammar` using left-recursion elimination and left-factoring.
 
 Note: The parser needs all input tokens to be defined in the grammar, so if using the token sequence created by Tokenizer, make sure to define the `EOF` token in the Grammar definition.
 

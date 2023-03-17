@@ -12,12 +12,14 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
         // Tokens
         // Production Symbol
         TokenPattern::Single("->"),
-        // Symbol/Identifier
-        TokenPattern::Single("[[:word:]]+"),
+        // Or
+        TokenPattern::Single("\\|"),
         // Comment
         TokenPattern::Surround("//", "\n|$", ""),
         // EndRule
-        TokenPattern::Single("\n+[[:space:]]*")
+        TokenPattern::Single("\n+[[:space:]]*"),
+        // Symbol/Identifier
+        TokenPattern::Single("[[:word:]]+|[()]"),
     ],
     // Ignore characters
     TokenPattern::Single("[[:space:]]+"),
@@ -30,11 +32,13 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
     gram_gen.new_nonterm("Language");
     gram_gen.new_nonterm("Rule_List");
     gram_gen.new_nonterm("Rule");
+    gram_gen.new_nonterm("RHS_List");
     gram_gen.new_nonterm("RHS");
-    gram_gen.new_term("Comment", 2 as TokenTypeId);
-    gram_gen.new_term("Identifier", 1 as TokenTypeId);
     gram_gen.new_term("Production_Symbol", 0 as TokenTypeId);
+    gram_gen.new_term("Or", 1 as TokenTypeId);
+    gram_gen.new_term("Comment", 2 as TokenTypeId);
     gram_gen.new_term("EndRule", 3 as TokenTypeId);
+    gram_gen.new_term("Identifier", 4 as TokenTypeId);
     gram_gen.new_term("EOF", -1 as TokenTypeId);
 
     gram_gen.make_prod("Language", vec!["Rule_List", "EOF"]);
@@ -42,7 +46,9 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
     gram_gen.make_prod("Rule_List", vec!["Rule_List", "Comment"]);
     gram_gen.make_prod("Rule_List", vec!["Rule"]);
     gram_gen.make_prod("Rule_List", vec!["Comment"]);
-    gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "RHS", "EndRule"]);
+    gram_gen.make_prod("Rule", vec!["Identifier", "Production_Symbol", "RHS_List", "EndRule"]);
+    gram_gen.make_prod("RHS_List", vec!["RHS", "Or", "RHS_List"]);
+    gram_gen.make_prod("RHS_List", vec!["RHS"]);
     gram_gen.make_prod("RHS", vec!["RHS", "Identifier"]);
     gram_gen.make_prod("RHS", vec!["Identifier"]);
 

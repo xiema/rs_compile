@@ -114,6 +114,7 @@ impl GrammarGenerator {
 
         // TODO: error handling
         Self::eliminate_left_recursion(&mut gram.gvars).unwrap();
+        Self::left_factor(&mut gram.gvars);
         Self::get_follow_sets(&mut gram.gvars);
 
         gram
@@ -151,7 +152,7 @@ impl GrammarGenerator {
                         // add to tail gvar
                         let mut new_prod = prod[1..].to_vec();
                         new_prod.push(tail_gvar_id);
-                        tail_gvar.productions.push(new_prod);
+                       tail_gvar.productions.push(new_prod);
                     }
                     else {
                         // add to original gvar
@@ -171,6 +172,67 @@ impl GrammarGenerator {
         gvars.append(&mut new_gvars);
 
         Ok(())
+    }
+
+    fn left_factor(gvars: &mut Vec<Gvar>) {
+        let mut new_gvars: Vec<Gvar> = Vec::new();
+
+        for i in 0..gvars.len() {
+            let mut map = HashMap::new();
+            for (i, prod) in gvars[i].productions.iter().enumerate() {
+                if prod.is_empty() { continue; }
+                if !map.contains_key(&prod[0]) {
+                    map.insert(prod[0], vec![]);
+                }
+                map.get_mut(&prod[0]).unwrap().push(i);
+            }
+
+            if map.iter().all(|(k,v)| v.len() == 1 || *k == gvars[i].id ) { continue; }
+
+            let tail_gvar_id = gvars.len() + new_gvars.len();
+            let mut tail_gvar = Gvar {
+                id: tail_gvar_id,
+                gvar_type: GvarType::NonTerminal,
+                name: gvars[i].name.clone() + "''",
+                productions: vec![],
+                follow_set: Vec::new(),
+            };
+
+            let mut new_prods = Vec::new();
+            for (k, vec) in map {
+                if vec.len() == 1 || k == gvars[i].id {
+                    for prod_id in vec {
+                        new_prods.push(gvars[i].productions[prod_id].clone());
+                    }
+                }
+                else {
+                    // find length of common prefix
+                    let mut pos = 1;
+                    while vec[1..].iter().all(|j| {
+                        pos < gvars[i].productions[*j].len()
+                        && gvars[i].productions[*j][pos] == gvars[i].productions[vec[0]][pos]
+                    }) {
+                        pos += 1;
+                    }
+
+                    // add unified prod with common prefix
+                    let mut new_prod = gvars[i].productions[vec[0]][0..pos].to_vec();
+                    new_prod.push(tail_gvar_id);
+                    new_prods.push(new_prod);
+
+                    // add tail prods
+                    for j in vec {
+                        tail_gvar.productions.push(gvars[i].productions[j][pos..].to_vec());
+                    }
+                }
+            }
+            // replace original gvar prods
+            swap(&mut gvars[i].productions, &mut new_prods);
+            
+            new_gvars.push(tail_gvar);
+        }
+
+        gvars.append(&mut new_gvars);
     }
 
     fn get_follow_sets(gvars: &mut Vec<Gvar>) {

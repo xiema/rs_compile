@@ -241,21 +241,24 @@ impl Parser for ParserLR {
         // Push starting state
         states.push(0);
         let mut token_idx = 0;
-
+        
+        let mut input: Vec<NodeId> = Vec::new();
         // push the first token (transformed into the associated Terminal Gvar)
         let mut token = tokens.first().with_context(|| "Input sequence is empty.")?;
         nodes.push(self.new_node(0, self.grammar.token_gvar_map[&token.token_type], None));
+        input.push(0);
 
         loop {
-            // the last pushed element in nodes is also always the next input
-            let next_node_id = nodes.len() - 1;
+            let next_node_id = *input.last().unwrap();
             let next_gvar_id = nodes[next_node_id].gvar_id;
             // Gvar is ROOT
             if next_gvar_id == 0 { break Ok(()) }
 
             let cur_state_id = *states.last().unwrap();
 
-            let action = match self.find_next(cur_state_id, next_gvar_id) {
+            let action = match self.find_next(cur_state_id, next_gvar_id)
+                .with_context(|| format!("No action on input {}", tokens[token_idx].text))
+            {
                 Ok(a) => a,
                 Err(e) => break Err(e)
             };
@@ -264,13 +267,20 @@ impl Parser for ParserLR {
                 ParseAction::Shift(next_state) => {
                     node_stack.push(next_node_id);
                     states.push(*next_state);
-                    token_idx += 1;
-                    let next_node_id = nodes.len();
-                    token = match tokens.get(token_idx) {
-                        Some(t) => t,
-                        None => break Err(anyhow!("Missing tokens at {}, in shift from State {} to State {}", token_idx, cur_state_id, next_state))
-                    };
-                    nodes.push(self.new_node(next_node_id, self.grammar.token_gvar_map[&token.token_type], None));
+                    input.pop();
+                    
+                    if input.is_empty() {
+                        token_idx += 1;
+                        let next_node_id = nodes.len();
+                        token = match tokens.get(token_idx) {
+                            Some(t) => t,
+                            None => break Err(anyhow!("Missing tokens at {}, in shift from State {} to State {}", token_idx, cur_state_id, next_state))
+                        };
+                        nodes.push(self.new_node(next_node_id, self.grammar.token_gvar_map[&token.token_type], None));
+                        input.push(next_node_id);
+                    }
+
+                    // println!("[{}] SHIFT {} goto {}", cur_state_id, self.grammar.gvars[next_gvar_id].name, next_state);
                 },
                 ParseAction::Reduce(gvar_id, prod_id) => {
                     let next_node_id = nodes.len();
@@ -285,6 +295,9 @@ impl Parser for ParserLR {
                     }
                     nodes[next_node_id].children.reverse();
                     nodes[next_node_id].prod_id = Some(*prod_id);
+                    input.push(next_node_id);
+
+                    // println!("[{}] REDUCE {}({})", cur_state_id, self.grammar.gvars[*gvar_id].name, pop_count);
                 },
                 ParseAction::ShiftReduce(gvar_id, prod_id) => {
                     let child_node_id = next_node_id;
@@ -304,6 +317,10 @@ impl Parser for ParserLR {
                     }
                     nodes[next_node_id].children.reverse();
                     nodes[next_node_id].prod_id = Some(*prod_id);
+                    input.pop();
+                    input.push(next_node_id);
+
+                    // println!("[{}] SHIFT {} REDUCE {}({})", cur_state_id, self.grammar.gvars[next_gvar_id].name, self.grammar.gvars[*gvar_id].name, pop_count);
                 },
             }
         }.with_context(|| format!("Parse error at {}:{}", token.line_num, token.line_pos))?;
