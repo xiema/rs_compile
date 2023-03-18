@@ -1,5 +1,5 @@
 // This is a sample grammar
-Program -> StatementList EOF
+Program -> StatementList $$
 StatementList -> Statement StatementList_Tail
 StatementList_Tail -> Statement StatementList_Tail
 StatementList_Tail -> eps

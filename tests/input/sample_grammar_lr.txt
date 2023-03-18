@@ -1,7 +1,14 @@
 // This is a sample grammar
-Program -> StatementList EOF
-StatementList -> StatementList Statement
-Statement -> Assignment EndStatement | FunctionCall EndStatement
-Assignment -> Identifier AssignmentOp Expression
-FunctionCall -> FunctionName ( FunctionArgs )
+Program -> StatementList $$
+StatementList -> StatementList Statement ";" | Statement ";"
+Statement -> Assignment | FunctionCall
+Assignment -> Identifier "=" Expression
+Expression -> Expression Operator Term | Term
+Term -> Number | Identifier
+FunctionCall -> Identifier "\\(" FunctionArgs "\\)"
+FunctionArgs -> FunctionArgs "," Identifier | Identifier
+
+Identifier ~= "[[:word:]]+"
+Number ~= "[[:digit:]]+"
+Operator ~= "[-+/*]"
 // End of sample grammar

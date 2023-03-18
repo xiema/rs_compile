@@ -281,6 +281,10 @@ impl GrammarGenerator {
     }
    
     pub fn new_nonterm(&mut self, name: &str) -> GvarId {
+        if self.gvar_id_map.contains_key(name) {
+            return self.gvar_id_map[name];
+        }
+
         let new_gvar_id = self.gvars.len();
 
         self.gvars.push(Gvar {
@@ -298,6 +302,10 @@ impl GrammarGenerator {
     }
 
     pub fn new_term(&mut self, name: &str, token_type: TokenTypeId) -> GvarId {
+        if self.gvar_id_map.contains_key(name) {
+            return self.gvar_id_map[name];
+        }
+
         let new_gvar_id = self.gvars.len();
 
         self.gvars.push(Gvar {

@@ -1,0 +1,4 @@
+i = 1;
+x = 100;
+a = b + c * d;
+print(something);

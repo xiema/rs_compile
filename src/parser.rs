@@ -9,16 +9,16 @@ pub mod parserlr;
 pub use parserll::ParserLL;
 pub use parserlr::ParserLR;
 
-type NodeId = usize;
+pub type NodeId = usize;
 
 #[allow(dead_code)]
 pub struct Node {
-    id: NodeId,
-    gvar_id: GvarId,
-    prod_id: Option<ProductionId>,
-    token: Option<Token>,
-    parent: Option<NodeId>,
-    children: Vec<NodeId>,
+    pub id: NodeId,
+    pub gvar_id: GvarId,
+    pub prod_id: Option<ProductionId>,
+    pub token: Option<Token>,
+    pub parent: Option<NodeId>,
+    pub children: Vec<NodeId>,
 }
 
 pub trait Parser {

@@ -110,6 +110,12 @@ This grammar is requires more than 1 lookahead token in order to decide whether 
     Term -> [0-9]+
     Operator -> [-+/*]
 
+# GrammarReader
+
+Tool for creating Grammars from a grammar description in a text file. Uses a pre-made metagrammar.
+
+Currently only reads LR Grammars.
+
 
 ### To Do:
 - Configurable disambiguation
