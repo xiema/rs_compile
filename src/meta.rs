@@ -160,7 +160,7 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
         // PatternSymbol
         TokenPattern::Single("~="),
         // Symbol/Identifier
-        TokenPattern::Single("[[:word:]]+"),
+        TokenPattern::Single("[[:alnum:]_]+"),
     ],
     // Ignore characters
     TokenPattern::Single("[[:space:]]+"),
@@ -271,6 +271,7 @@ mod tests {
     use super::*;
     use crate::tokenizer::*;
     use crate::parser::*;
+    use crate::grammar::*;
 
     #[allow(dead_code)]
     fn assert_tokens_str(t: &[Token], ts: Vec<&str>) {
@@ -315,7 +316,7 @@ mod tests {
 
         let nodes = parser.parse(&tokens).unwrap();
 
-        // parser::display_tree(0, &nodes, &gram, 0);
+        // display_tree(0, &nodes, &gram, 0);
     }
 
     #[allow(unused_variables)]
@@ -336,7 +337,7 @@ mod tests {
         let (mut tok, gram) = define_lang_lr();
         let parser = ParserLR::new(&gram);
 
-        // grammar::show_follow_sets(&gram.gvars);
+        // show_follow_sets(&gram.gvars);
         // grammar::show_prod_maps(&gram.gvars);
 
         assert_eq!(gram.is_parseable_lr(), true);
@@ -363,6 +364,8 @@ mod tests {
             }
         }
         assert_eq!(tokens[tokens.len()-1].token_type, -1 as TokenTypeId);
+
+        // parser.display_parse_table();
 
         let nodes = parser.parse(&tokens).unwrap();
 

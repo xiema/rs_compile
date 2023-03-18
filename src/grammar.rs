@@ -23,6 +23,7 @@ pub struct Gvar {
 
     pub productions: Vec<Vec<GvarId>>,
     pub follow_set: FollowSet,
+    pub first_set: HashSet<GvarId>,
 }
 
 #[derive(Clone)]
@@ -79,6 +80,7 @@ impl GrammarGenerator {
     /// GrammarGenerator will need to be reconfigured after calling this method.
     pub fn generate(&mut self) -> Grammar {
         Self::get_follow_sets(&mut self.gvars);
+        Self::get_first_sets(&mut self.gvars);
 
         let mut gram = Grammar {
             gvars: Vec::new(),
@@ -116,6 +118,7 @@ impl GrammarGenerator {
         Self::eliminate_left_recursion(&mut gram.gvars).unwrap();
         Self::left_factor(&mut gram.gvars);
         Self::get_follow_sets(&mut gram.gvars);
+        Self::get_first_sets(&mut gram.gvars);
 
         gram
     }
@@ -143,6 +146,7 @@ impl GrammarGenerator {
                     name: gvars[i].name.clone() + "'",
                     productions: vec![vec![]],
                     follow_set: Vec::new(),
+                    first_set: HashSet::new(),
                 };
 
                 // create new productions for original and tail gvars
@@ -196,6 +200,7 @@ impl GrammarGenerator {
                 name: gvars[i].name.clone() + "''",
                 productions: vec![],
                 follow_set: Vec::new(),
+                first_set: HashSet::new(),
             };
 
             let mut new_prods = Vec::new();
@@ -210,6 +215,7 @@ impl GrammarGenerator {
                     let mut pos = 1;
                     while vec[1..].iter().all(|j| {
                         pos < gvars[i].productions[*j].len()
+                        && pos < gvars[i].productions[vec[0]].len()
                         && gvars[i].productions[*j][pos] == gvars[i].productions[vec[0]][pos]
                     }) {
                         pos += 1;
@@ -235,6 +241,43 @@ impl GrammarGenerator {
         gvars.append(&mut new_gvars);
     }
 
+    fn get_first_sets(gvars: &mut Vec<Gvar>) {
+
+        // add initial content
+        for i in 0..gvars.len() {
+            for j in 0..gvars[i].productions.len() {
+                if gvars[i].productions[j].len() > 0 {
+                    let id = gvars[i].productions[j][0];
+                    gvars[i].first_set.insert(id);
+                }
+            }
+        }
+
+        loop {
+            let mut modified = false;
+
+            for i in 0..gvars.len() {
+                let mut app = HashSet::new();
+                for j in gvars[i].first_set.iter() {
+                    for prod in &gvars[*j].productions {
+                        if prod.len() > 0 {
+                            app.insert(prod[0]);
+                        }
+                    }
+                }
+
+                for j in app.iter() {
+                    if !gvars[i].first_set.contains(j) {
+                        gvars[i].first_set.insert(*j);
+                        modified = true;
+                    }
+                }
+            }
+
+            if !modified { break; }
+        }
+    }
+
     fn get_follow_sets(gvars: &mut Vec<Gvar>) {
 
         // add initial content of follow sets
@@ -245,7 +288,6 @@ impl GrammarGenerator {
                     for rhs_subid in 0..rhs.len() {
                         if rhs[rhs_subid] == gvars[i].id {
                             add_follow(&mut new_follow_set, &rhs[(rhs_subid+1)..], gvars[j].id);
-                            break;
                         }
                     }
                 }
@@ -294,6 +336,7 @@ impl GrammarGenerator {
 
             productions: Vec::new(),
             follow_set: FollowSet::new(),
+            first_set: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);
@@ -315,6 +358,7 @@ impl GrammarGenerator {
 
             productions: Vec::new(),
             follow_set: FollowSet::new(),
+            first_set: HashSet::new(),
         });
 
         self.gvar_id_map.insert(String::from(name), new_gvar_id);

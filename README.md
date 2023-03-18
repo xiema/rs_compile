@@ -157,7 +157,7 @@ Approximation of the metagrammar used by GrammarReader, defined using itself:
     ProductionSymbol ~= "->"
     PatternSymbol ~= "~="
     EndRule ~= "\n+[[:space:]]*"
-    Identifier ~= "[[:word:]]+"
+    Identifier ~= "[[:alnum:]]+"
 
     // Comment ~= any text after '//' and before the first line break
     // LiteralSymbol ~= any text between double quotes, with '\' as an escape char

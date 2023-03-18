@@ -114,11 +114,21 @@ impl ParserLR {
             for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
                 if *prod_pos == grammar.gvars[*gvar_id].productions[*prod_id].len() {
                     for (rhs, _) in &grammar.gvars[*gvar_id].follow_set {
+                        
+                        // TODO: Error handling
                         if follow_ids.contains(&rhs[0]) || seen.contains(&rhs[0]) {
                             panic!("Grammar is not LR(1)");
                         }
                         action_map.insert(rhs[0], ParseAction::Reduce(*gvar_id, *prod_id));
                         seen.insert(rhs[0]);
+
+                        for id in &grammar.gvars[rhs[0]].first_set {
+                            if follow_ids.contains(id) || seen.contains(id) {
+                                panic!("Grammar is not LR(1)");
+                            }
+                            action_map.insert(*id, ParseAction::Reduce(*gvar_id, *prod_id));
+                            seen.insert(*id);
+                        }
                     }
                 }
             }
