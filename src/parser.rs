@@ -1,6 +1,6 @@
 use anyhow::{Result};
 
-use crate::grammar::{GvarId, ProductionId, Grammar, GvarType};
+use crate::grammar::{ElementId, ProductionId, Grammar, ElementType};
 use crate::tokenizer::{Token};
 
 pub mod parserll;
@@ -14,7 +14,7 @@ pub type NodeId = usize;
 #[allow(dead_code)]
 pub struct Node {
     pub id: NodeId,
-    pub gvar_id: GvarId,
+    pub elem_id: ElementId,
     pub prod_id: Option<ProductionId>,
     pub token: Option<Token>,
     pub parent: Option<NodeId>,
@@ -29,12 +29,12 @@ pub trait Parser {
 #[allow(dead_code)]
 pub fn display_tree(node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar, level: usize) {
     let indent = String::from("  ").repeat(level);
-    match gram.gvars[nodes[node_id].gvar_id].gvar_type {
-        GvarType::Terminal(_) => {
-            print!("{}{}", indent, gram.gvars[nodes[node_id].gvar_id].name);
+    match gram.elems[nodes[node_id].elem_id].elem_type {
+        ElementType::Terminal(_) => {
+            print!("{}{}", indent, gram.elems[nodes[node_id].elem_id].name);
         },
-        GvarType::NonTerminal => {
-            print!("{}{} : [PROD {}]", indent, gram.gvars[nodes[node_id].gvar_id].name, nodes[node_id].prod_id.unwrap());
+        ElementType::NonTerminal => {
+            print!("{}{} : [PROD {}]", indent, gram.elems[nodes[node_id].elem_id].name, nodes[node_id].prod_id.unwrap());
         }
     }
     match &nodes[node_id].token {

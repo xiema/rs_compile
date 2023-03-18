@@ -27,10 +27,10 @@ impl GrammarReader {
 
         let mut symbol_table = HashMap::new();
         let mut terminals = Vec::new();
-        let gvar_id_pattern_rule = self.grammar.gvar_id_map["PatternRule"];
-        let gvar_id_production_rule = self.grammar.gvar_id_map["ProductionRule"];
-        let gvar_id_literal = self.grammar.gvar_id_map["LiteralSymbol"];
-        let gvar_id_eof_marker = self.grammar.gvar_id_map["EOFMarker"];
+        let elem_id_pattern_rule = self.grammar.elem_id_map["PatternRule"];
+        let elem_id_production_rule = self.grammar.elem_id_map["ProductionRule"];
+        let elem_id_literal = self.grammar.elem_id_map["LiteralSymbol"];
+        let elem_id_eof_marker = self.grammar.elem_id_map["EOFMarker"];
         let mut gram_gen = GrammarGenerator::new();
 
         // Root
@@ -44,7 +44,7 @@ impl GrammarReader {
         for node_id in iter_descendants("Rule", root, &nodes, &self.grammar) {
             let node = &nodes[nodes[node_id].children[0]];
 
-            if node.gvar_id == gvar_id_pattern_rule {
+            if node.elem_id == elem_id_pattern_rule {
                 let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
                 let rhs = &nodes[get_child("LiteralSymbol", node_id, &nodes, &self.grammar).unwrap()];
                 let name = &lhs.token.as_ref().unwrap().text;
@@ -55,7 +55,7 @@ impl GrammarReader {
                 let tuple = (name.clone(), (&rhs.token.as_ref().unwrap().text).clone());
                 if !terminals.contains(&tuple) { terminals.push(tuple) };
             }
-            else if node.gvar_id == gvar_id_production_rule {
+            else if node.elem_id == elem_id_production_rule {
                 let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
                 let name = &lhs.token.as_ref().unwrap().text;
                 if !symbol_table.contains_key(name) {
@@ -95,19 +95,19 @@ impl GrammarReader {
 
 
         // Grammar Setup
-        for (name, gvar_id) in &mut symbol_table {
+        for (name, elem_id) in &mut symbol_table {
             if terminals.iter().any(|(a,_)| a == name) {
-                *gvar_id = gram_gen.new_term(name, token_map[name]);
+                *elem_id = gram_gen.new_term(name, token_map[name]);
             }
             else {
-                *gvar_id = gram_gen.new_nonterm(name);
+                *elem_id = gram_gen.new_nonterm(name);
             }
         }
 
         for node_id in iter_descendants("ProductionRule", root, &nodes, &self.grammar) {
             let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
-            let def_gvar_name = &lhs.token.as_ref().unwrap().text;
-            let def_gvar_id = symbol_table[def_gvar_name];
+            let def_elem_name = &lhs.token.as_ref().unwrap().text;
+            let def_elem_id = symbol_table[def_elem_name];
 
             for rhs_node_id in iter_descendants("RHS", node_id, &nodes, &self.grammar) {
                 let mut rhs_def = Vec::new();
@@ -115,7 +115,7 @@ impl GrammarReader {
                 for sym_id in iter_descendants("Symbol", rhs_node_id, &nodes, &self.grammar) {
                     let symbol = &nodes[nodes[sym_id].children[0]];
                     let tok_text_full = &symbol.token.as_ref().unwrap().text;
-                    let tok_text = if symbol.gvar_id == gvar_id_literal {
+                    let tok_text = if symbol.elem_id == elem_id_literal {
                         &tok_text_full[1..tok_text_full.len()-1]
                     }
                     else { // Identifier
@@ -123,7 +123,7 @@ impl GrammarReader {
                     };
 
                     // special
-                    if symbol.gvar_id == gvar_id_eof_marker {
+                    if symbol.elem_id == elem_id_eof_marker {
                         rhs_def.push(1);
                     }
                     else {
@@ -131,7 +131,7 @@ impl GrammarReader {
                     }
                 }
 
-                gram_gen.new_prod(def_gvar_id, rhs_def);
+                gram_gen.new_prod(def_elem_id, rhs_def);
             }
         }
 
@@ -234,7 +234,7 @@ fn iter_descendants(name: &str, base_node_id: NodeId, nodes: &Vec<Node>, gram: &
 
     while !q.is_empty() {
         let node_id = q.pop_front().unwrap();
-        if gram.gvars[nodes[node_id].gvar_id].name == name {
+        if gram.elems[nodes[node_id].elem_id].name == name {
             ret.push(node_id);
         }
         else {
@@ -253,7 +253,7 @@ fn get_child(name: &str, base_node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar
 
     while !q.is_empty() {
         let node_id = q.pop_front().unwrap();
-        if gram.gvars[nodes[node_id].gvar_id].name == name {
+        if gram.elems[nodes[node_id].elem_id].name == name {
             return Some(node_id);
         }
         else {
@@ -287,8 +287,8 @@ mod tests {
         let (mut tok, gram) = define_lang_ll();
         let parser = ParserLL::new(&gram);
 
-        // grammar::show_follow_sets(&gram.gvars);
-        // grammar::show_prod_maps(&gram.gvars);
+        show_follow_sets(&gram.elems);
+        // show_prod_maps(&gram.elems);
 
         assert_eq!(gram.is_parseable_ll(), true);
         assert_eq!(parser.get_required_lookahead(), 2);
@@ -337,8 +337,8 @@ mod tests {
         let (mut tok, gram) = define_lang_lr();
         let parser = ParserLR::new(&gram);
 
-        // show_follow_sets(&gram.gvars);
-        // grammar::show_prod_maps(&gram.gvars);
+        // show_follow_sets(&gram.elems);
+        // show_prod_maps(&gram.elems);
 
         assert_eq!(gram.is_parseable_lr(), true);
         // assert_eq!(parser.get_required_lookahead(), 2);

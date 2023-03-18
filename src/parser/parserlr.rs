@@ -2,21 +2,21 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result, anyhow};
 
-use crate::grammar::{Grammar, ProductionId, GvarId, GvarType};
+use crate::grammar::{Grammar, ProductionId, ElementId, ElementType};
 use crate::tokenizer::{Token, TokenTypeId};
 
 use super::*;
 
 pub enum ParseAction {
     Shift(usize),
-    Reduce(GvarId, ProductionId),
-    ShiftReduce(GvarId, ProductionId),
+    Reduce(ElementId, ProductionId),
+    ShiftReduce(ElementId, ProductionId),
 }
 
 pub struct ParserLR {
     grammar: Grammar,
-    parse_table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>>,
-    state_defs: Vec<HashSet<(GvarId, ProductionId, usize)>>,
+    parse_table: Vec<Vec<(usize, HashMap<ElementId, ParseAction>)>>,
+    state_defs: Vec<HashSet<(ElementId, ProductionId, usize)>>,
     lookahead: usize,
 }
 
@@ -42,10 +42,10 @@ impl ParserLR {
     }
 
     /// Creates a new node, optionally associating it with a parent.
-    pub fn new_node(&self, new_node_id: NodeId, gvar_id: GvarId, parent: Option<NodeId>) -> Node {
+    pub fn new_node(&self, new_node_id: NodeId, elem_id: ElementId, parent: Option<NodeId>) -> Node {
         Node {
             id: new_node_id,
-            gvar_id: gvar_id,
+            elem_id: elem_id,
             prod_id: None,
             token: None,
             parent: parent,
@@ -54,18 +54,18 @@ impl ParserLR {
     }
 
     /// Creates a LR Parse Table
-    /// Creates Maps of Terminal GvarIds to ParseActions for each lookahead position.
+    /// Creates Maps of Terminal ElementIds to ParseActions for each lookahead position.
     /// Currently only creates 1 Map at lookahead=1.
-    fn get_parse_table(grammar: &Grammar) -> (Vec<HashSet<(GvarId, ProductionId, usize)>>, Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>>) {
-        let mut table: Vec<Vec<(usize, HashMap<GvarId, ParseAction>)>> = Vec::new();
-        let mut state_defs: Vec<HashSet<(GvarId, ProductionId, usize)>> = Vec::new();
+    fn get_parse_table(grammar: &Grammar) -> (Vec<HashSet<(ElementId, ProductionId, usize)>>, Vec<Vec<(usize, HashMap<ElementId, ParseAction>)>>) {
+        let mut table: Vec<Vec<(usize, HashMap<ElementId, ParseAction>)>> = Vec::new();
+        let mut state_defs: Vec<HashSet<(ElementId, ProductionId, usize)>> = Vec::new();
 
         let mut cur_state_id = 0;
         
         // A State is composed of Substates which are tuples of
-        //   (GvarId, ProductionId, ProductionPosition)
-        //   GvarId: Which Gvar at the LHS
-        //   ProductionId: Which Production of GvarId at the RHS
+        //   (ElementId, ProductionId, ProductionPosition)
+        //   ElementId: Which Element at the LHS
+        //   ProductionId: Which Production of ElementId at the RHS
         //   ProductionPosition: The handle position in the RHS
         let mut starting_state = HashSet::new();
         starting_state.insert((0, 0, 0));
@@ -74,16 +74,16 @@ impl ParserLR {
         while cur_state_id < state_defs.len() {
             let mut closures = HashSet::new();
             let mut follow_ids = HashSet::new();
-            let mut action_map: HashMap<GvarId, ParseAction> = HashMap::new();
+            let mut action_map: HashMap<ElementId, ParseAction> = HashMap::new();
 
             // get all closures and follow ids
 
             // get starting closures and follow ids
-            for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
-                if *prod_pos < grammar.gvars[*gvar_id].productions[*prod_id].len() {
-                    let id = grammar.gvars[*gvar_id].productions[*prod_id][*prod_pos];
-                    if matches!(grammar.gvars[id].gvar_type, GvarType::NonTerminal) {
-                        for i in 0..grammar.gvars[id].productions.len() {
+            for (elem_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
+                if *prod_pos < grammar.elems[*elem_id].productions[*prod_id].len() {
+                    let id = grammar.elems[*elem_id].productions[*prod_id][*prod_pos];
+                    if matches!(grammar.elems[id].elem_type, ElementType::NonTerminal) {
+                        for i in 0..grammar.elems[id].productions.len() {
                             closures.insert((id, i));
                         }
                     }
@@ -93,10 +93,10 @@ impl ParserLR {
             // get derivative closures and follow ids
             loop {
                 let mut new_closures = HashSet::new();
-                for (gvar_id, prod_id) in &closures {
-                    let id = grammar.gvars[*gvar_id].productions[*prod_id][0];
-                    if matches!(grammar.gvars[id].gvar_type, GvarType::NonTerminal) {
-                        for i in 0..grammar.gvars[id].productions.len() {
+                for (elem_id, prod_id) in &closures {
+                    let id = grammar.elems[*elem_id].productions[*prod_id][0];
+                    if matches!(grammar.elems[id].elem_type, ElementType::NonTerminal) {
+                        for i in 0..grammar.elems[id].productions.len() {
                             let new_closure = (id, i);
                             if !closures.contains(&new_closure) {
                                 new_closures.insert(new_closure);
@@ -111,22 +111,22 @@ impl ParserLR {
 
             // if handle at end of any basis, add REDUCE action
             let mut seen = HashSet::new();
-            for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
-                if *prod_pos == grammar.gvars[*gvar_id].productions[*prod_id].len() {
-                    for (rhs, _) in &grammar.gvars[*gvar_id].follow_set {
+            for (elem_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
+                if *prod_pos == grammar.elems[*elem_id].productions[*prod_id].len() {
+                    for (rhs, _) in &grammar.elems[*elem_id].follow_set {
                         
                         // TODO: Error handling
                         if follow_ids.contains(&rhs[0]) || seen.contains(&rhs[0]) {
                             panic!("Grammar is not LR(1)");
                         }
-                        action_map.insert(rhs[0], ParseAction::Reduce(*gvar_id, *prod_id));
+                        action_map.insert(rhs[0], ParseAction::Reduce(*elem_id, *prod_id));
                         seen.insert(rhs[0]);
 
-                        for id in &grammar.gvars[rhs[0]].first_set {
+                        for id in &grammar.elems[rhs[0]].first_set {
                             if follow_ids.contains(id) || seen.contains(id) {
                                 panic!("Grammar is not LR(1)");
                             }
-                            action_map.insert(*id, ParseAction::Reduce(*gvar_id, *prod_id));
+                            action_map.insert(*id, ParseAction::Reduce(*elem_id, *prod_id));
                             seen.insert(*id);
                         }
                     }
@@ -139,29 +139,29 @@ impl ParserLR {
                 let mut reduce = false;
                 
                 // bases
-                for (gvar_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
-                    if *prod_pos < grammar.gvars[*gvar_id].productions[*prod_id].len() {
-                        let id = grammar.gvars[*gvar_id].productions[*prod_id][*prod_pos];
+                for (elem_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
+                    if *prod_pos < grammar.elems[*elem_id].productions[*prod_id].len() {
+                        let id = grammar.elems[*elem_id].productions[*prod_id][*prod_pos];
                         if id == follow_id {
-                            new_state.insert((*gvar_id, *prod_id, prod_pos + 1));
-                            reduce |= prod_pos + 1 == grammar.gvars[*gvar_id].productions[*prod_id].len();
+                            new_state.insert((*elem_id, *prod_id, prod_pos + 1));
+                            reduce |= prod_pos + 1 == grammar.elems[*elem_id].productions[*prod_id].len();
                         }
                     }
                 }
                 // closures
-                for (gvar_id, prod_id) in &closures {
-                    let id = grammar.gvars[*gvar_id].productions[*prod_id][0];
+                for (elem_id, prod_id) in &closures {
+                    let id = grammar.elems[*elem_id].productions[*prod_id][0];
                     if id == follow_id {
-                        new_state.insert((*gvar_id, *prod_id, 1));
-                        reduce |= 1 == grammar.gvars[*gvar_id].productions[*prod_id].len();
+                        new_state.insert((*elem_id, *prod_id, 1));
+                        reduce |= 1 == grammar.elems[*elem_id].productions[*prod_id].len();
                     }
                 }
 
                 if new_state.len() == 1 && reduce {
                     // SHIFT-REDUCE
                     // only if there is a unique substate to reduce
-                    for (gvar_id, prod_id, _) in &new_state {
-                        action_map.insert(follow_id, ParseAction::ShiftReduce(*gvar_id, *prod_id));
+                    for (elem_id, prod_id, _) in &new_state {
+                        action_map.insert(follow_id, ParseAction::ShiftReduce(*elem_id, *prod_id));
                     }
                 }
                 else {
@@ -195,13 +195,13 @@ impl ParserLR {
         for (i, state_def) in self.state_defs.iter().enumerate() {
             println!("State {}:", i);
 
-            for (gvar_id, prod_id, prod_pos) in state_def {
-                print!("  {} --> ", self.grammar.gvars[*gvar_id].name);
-                for (j, id) in self.grammar.gvars[*gvar_id].productions[*prod_id].iter().enumerate() {
+            for (elem_id, prod_id, prod_pos) in state_def {
+                print!("  {} --> ", self.grammar.elems[*elem_id].name);
+                for (j, id) in self.grammar.elems[*elem_id].productions[*prod_id].iter().enumerate() {
                     if j == *prod_pos {
                         print!(". ");
                     }
-                    print!("{} ", self.grammar.gvars[*id].name);
+                    print!("{} ", self.grammar.elems[*id].name);
                 }
                 print!("\n")
             }
@@ -210,19 +210,19 @@ impl ParserLR {
 
             for (lookahead, map) in &self.parse_table[i] {
                 for (tok_id, action) in map {
-                    print!("  ({}) {} = ", lookahead, self.grammar.gvars[*tok_id].name);
+                    print!("  ({}) {} = ", lookahead, self.grammar.elems[*tok_id].name);
                     match action {
                         ParseAction::Shift(next_state) => print!("Shift & Goto {}", next_state),
-                        ParseAction::Reduce(gvar_id, prod_id) => {
-                            print!("Reduce {} -> ", self.grammar.gvars[*gvar_id].name);
-                            for id in &self.grammar.gvars[*gvar_id].productions[*prod_id] {
-                                print!("{} ", self.grammar.gvars[*id].name);
+                        ParseAction::Reduce(elem_id, prod_id) => {
+                            print!("Reduce {} -> ", self.grammar.elems[*elem_id].name);
+                            for id in &self.grammar.elems[*elem_id].productions[*prod_id] {
+                                print!("{} ", self.grammar.elems[*id].name);
                             }
                         },
-                        ParseAction::ShiftReduce(gvar_id, prod_id) => {
-                            print!("Shift & Reduce {} -> ", self.grammar.gvars[*gvar_id].name);
-                            for id in &self.grammar.gvars[*gvar_id].productions[*prod_id] {
-                                print!("{} ", self.grammar.gvars[*id].name);
+                        ParseAction::ShiftReduce(elem_id, prod_id) => {
+                            print!("Shift & Reduce {} -> ", self.grammar.elems[*elem_id].name);
+                            for id in &self.grammar.elems[*elem_id].productions[*prod_id] {
+                                print!("{} ", self.grammar.elems[*id].name);
                             }
                         }
                     }
@@ -234,9 +234,9 @@ impl ParserLR {
         }
     }
 
-    fn find_next(&self, cur_state_id: usize, next_gvar_id: GvarId) -> Result<&ParseAction> {
+    fn find_next(&self, cur_state_id: usize, next_elem_id: ElementId) -> Result<&ParseAction> {
         let (_i, map) = &self.parse_table[cur_state_id][0];
-        map.get(&next_gvar_id).with_context(|| format!("Missing transition in State {} on input {}", cur_state_id, self.grammar.gvars[next_gvar_id].name))
+        map.get(&next_elem_id).with_context(|| format!("Missing transition in State {} on input {}", cur_state_id, self.grammar.elems[next_elem_id].name))
     }
 }
 
@@ -253,21 +253,21 @@ impl Parser for ParserLR {
         let mut token_idx = 0;
         
         let mut input: Vec<NodeId> = Vec::new();
-        // push the first token (transformed into the associated Terminal Gvar)
+        // push the first token (transformed into the associated Terminal Element)
         let mut token = tokens.first().with_context(|| "Input sequence is empty.")?;
-        nodes.push(self.new_node(0, self.grammar.token_gvar_map[&token.token_type], None));
+        nodes.push(self.new_node(0, self.grammar.token_elem_map[&token.token_type], None));
         nodes[0].token = Some(tokens[0].clone());
         input.push(0);
 
         loop {
             let next_node_id = *input.last().unwrap();
-            let next_gvar_id = nodes[next_node_id].gvar_id;
-            // Gvar is ROOT
-            if next_gvar_id == 0 { break Ok(()) }
+            let next_elem_id = nodes[next_node_id].elem_id;
+            // Element is ROOT
+            if next_elem_id == 0 { break Ok(()) }
 
             let cur_state_id = *states.last().unwrap();
 
-            let action = match self.find_next(cur_state_id, next_gvar_id)
+            let action = match self.find_next(cur_state_id, next_elem_id)
                 .with_context(|| format!("No action on input {}", tokens[token_idx].text))
             {
                 Ok(a) => a,
@@ -287,22 +287,22 @@ impl Parser for ParserLR {
                             Some(t) => t,
                             None => break Err(anyhow!("Missing tokens at {}, in shift from State {} to State {}", token_idx, cur_state_id, next_state))
                         };
-                        let gvar_id = match self.grammar.token_gvar_map.get(&token.token_type) {
+                        let elem_id = match self.grammar.token_elem_map.get(&token.token_type) {
                             Some(id) => id,
-                            None => break Err(anyhow!("Couldn't find Gvar for token: '{}'", token.text))
+                            None => break Err(anyhow!("Couldn't find Element for token: '{}'", token.text))
                         };
-                        nodes.push(self.new_node(next_node_id, *gvar_id, None));
+                        nodes.push(self.new_node(next_node_id, *elem_id, None));
                         nodes[next_node_id].token = Some(tokens[token_idx].clone());
                         input.push(next_node_id);
                     }
 
-                    // println!("[{}] SHIFT {} goto {}", cur_state_id, self.grammar.gvars[next_gvar_id].name, next_state);
+                    // println!("[{}] SHIFT {} goto {}", cur_state_id, self.grammar.elems[next_elem_id].name, next_state);
                 },
-                ParseAction::Reduce(gvar_id, prod_id) => {
+                ParseAction::Reduce(elem_id, prod_id) => {
                     let next_node_id = nodes.len();
-                    nodes.push(self.new_node(next_node_id, *gvar_id, None));
+                    nodes.push(self.new_node(next_node_id, *elem_id, None));
 
-                    let pop_count = self.grammar.gvars[*gvar_id].productions[*prod_id].len();
+                    let pop_count = self.grammar.elems[*elem_id].productions[*prod_id].len();
                     for _ in 0..pop_count {
                         states.pop();
                         let node_id = node_stack.pop().unwrap();
@@ -313,18 +313,18 @@ impl Parser for ParserLR {
                     nodes[next_node_id].prod_id = Some(*prod_id);
                     input.push(next_node_id);
 
-                    // println!("[{}] REDUCE {}({})", cur_state_id, self.grammar.gvars[*gvar_id].name, pop_count);
+                    // println!("[{}] REDUCE {}({})", cur_state_id, self.grammar.elems[*elem_id].name, pop_count);
                 },
-                ParseAction::ShiftReduce(gvar_id, prod_id) => {
+                ParseAction::ShiftReduce(elem_id, prod_id) => {
                     let child_node_id = next_node_id;
 
                     let next_node_id = nodes.len();
-                    nodes.push(self.new_node(next_node_id, *gvar_id, None));
+                    nodes.push(self.new_node(next_node_id, *elem_id, None));
 
                     nodes[child_node_id].parent = Some(next_node_id);
                     nodes[next_node_id].children.push(child_node_id);
 
-                    let pop_count = self.grammar.gvars[*gvar_id].productions[*prod_id].len() - 1;
+                    let pop_count = self.grammar.elems[*elem_id].productions[*prod_id].len() - 1;
                     for _ in 0..pop_count {
                         states.pop();
                         let node_id = node_stack.pop().unwrap();
@@ -336,7 +336,7 @@ impl Parser for ParserLR {
                     input.pop();
                     input.push(next_node_id);
 
-                    // println!("[{}] SHIFT {} REDUCE {}({})", cur_state_id, self.grammar.gvars[next_gvar_id].name, self.grammar.gvars[*gvar_id].name, pop_count);
+                    // println!("[{}] SHIFT {} REDUCE {}({})", cur_state_id, self.grammar.elems[next_elem_id].name, self.grammar.elems[*elem_id].name, pop_count);
                 },
             }
         }.with_context(|| format!("Parse error at {}:{}", token.line_num, token.line_pos))?;

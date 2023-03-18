@@ -4,7 +4,7 @@ use std::mem::swap;
 use anyhow::{anyhow, Context};
 use::anyhow::{Result};
 
-use crate::grammar::{Grammar, ProductionId, GvarId, GvarType};
+use crate::grammar::{Grammar, ProductionId, ElementId, ElementType};
 use crate::tokenizer::{Token, TokenTypeId};
 
 use super::{Node, NodeId, Parser};
@@ -36,10 +36,10 @@ impl ParserLL {
     }
 
     /// Creates a new node, optionally associating it with a parent.
-    pub fn new_node(&self, new_node_id: NodeId, gvar_id: GvarId, parent: Option<NodeId>) -> Node {
+    pub fn new_node(&self, new_node_id: NodeId, elem_id: ElementId, parent: Option<NodeId>) -> Node {
         Node {
             id: new_node_id,
-            gvar_id: gvar_id,
+            elem_id: elem_id,
             prod_id: None,
             token: None,
             parent: parent,
@@ -48,27 +48,27 @@ impl ParserLL {
     }
 
     /// Create a LL Parse Table
-    /// Creates Maps of TokenTypeIds to ProductionIds for each Gvar with the minimum possible lookaheads
+    /// Creates Maps of TokenTypeIds to ProductionIds for each Element with the minimum possible lookaheads
     /// Lookahead positions are determined (and may be sparse), and a Map is created for each position.
     fn get_parse_table(grammar: &Grammar) -> Vec<Vec<(usize, HashMap<TokenTypeId, ProductionId>)>>  {
         let mut table: Vec<Vec<(usize, HashMap<TokenTypeId, ProductionId>)>> = Vec::new();
 
-        for gvar_id in 0..grammar.gvars.len() {
-            // println!("Finding ProdMap for {}", &self.gvars[gvar_id].name);
+        for elem_id in 0..grammar.elems.len() {
+            // println!("Finding ProdMap for {}", &grammar.elems[elem_id].name);
 
             let mut prod_map = Vec::new();
 
-            if grammar.gvars[gvar_id].productions.len() == 1 {
+            if grammar.elems[elem_id].productions.len() == 1 {
                 table.push(prod_map);
                 continue;
             }
             
-            // Tuple of (Production Id, RHS Gvars List, Parent Node Gvar)
-            // RHS Gvars (converted to corresponding Tokens) and Production Ids are inspected to find if a unique token 
+            // Tuple of (Production Id, RHS Elements List, Parent Node Element)
+            // RHS Elements (converted to corresponding Tokens) and Production Ids are inspected to find if a unique token 
             //   can be found at a particular lookahead position.
-            // Parent Node Gvar is used to extend the RHS Gvar Vector if the lookahead exceeds the current length
-            let mut s1: HashSet<(ProductionId, Vec<GvarId>, GvarId)> = grammar.gvars[gvar_id].productions.iter().enumerate().map(|(i, p)| (i, p.clone(), gvar_id)).collect();
-            let mut s2: HashSet<(ProductionId, Vec<GvarId>, GvarId)> = HashSet::new();
+            // Parent Node Element is used to extend the RHS Element Vector if the lookahead exceeds the current length
+            let mut s1: HashSet<(ProductionId, Vec<ElementId>, ElementId)> = grammar.elems[elem_id].productions.iter().enumerate().map(|(i, p)| (i, p.clone(), elem_id)).collect();
+            let mut s2: HashSet<(ProductionId, Vec<ElementId>, ElementId)> = HashSet::new();
             let mut lookahead = 1;
 
             while !s1.is_empty() {
@@ -80,23 +80,23 @@ impl ParserLL {
                     for (prod_id, rhs, id_after) in &s1 {
                         if rhs.len() == 0 {
                             // replace empty rhs with follow set
-                            for (list, new_id_after) in &grammar.gvars[*id_after].follow_set {
+                            for (list, new_id_after) in &grammar.elems[*id_after].follow_set {
                                 s2.insert((*prod_id, list.clone(), *new_id_after));
                                 modified = true;
                             }
                         }
                         else {
-                            match grammar.gvars[rhs[0]].gvar_type {
-                                GvarType::NonTerminal => {
+                            match grammar.elems[rhs[0]].elem_type {
+                                ElementType::NonTerminal => {
                                     // replace nonterminals at front of rhs with corresponding productions
-                                    for sub_prod in &grammar.gvars[rhs[0]].productions {
+                                    for sub_prod in &grammar.elems[rhs[0]].productions {
                                         let mut new_prod = sub_prod.clone();
                                         new_prod.extend_from_slice(&rhs[1..]);
                                         s2.insert((*prod_id, new_prod, *id_after));
                                     }
                                     modified = true;
                                 },
-                                GvarType::Terminal(_) => {
+                                ElementType::Terminal(_) => {
                                     // retain terminals
                                     s2.insert((*prod_id, rhs.clone(), *id_after));
                                 }
@@ -111,7 +111,7 @@ impl ParserLL {
 
 
                 // map of terminals to the possible productions if the terminal is seen at the current position
-                let mut terminal_to_prod: HashMap<GvarId, Vec<ProductionId>> = HashMap::new();
+                let mut terminal_to_prod: HashMap<ElementId, Vec<ProductionId>> = HashMap::new();
                 for (prod_id, rhs, _) in &s1 {
                     if !terminal_to_prod.contains_key(&rhs[0]) {
                         terminal_to_prod.insert(rhs[0], Vec::new());
@@ -123,21 +123,21 @@ impl ParserLL {
 
                 // possible prod map at this lookahead position
                 let mut new_map: HashMap<TokenTypeId, ProductionId> = HashMap::new();
-                for (gvar_id, prod_ids) in &terminal_to_prod {
+                for (elem_id, prod_ids) in &terminal_to_prod {
                     // skip if more than 1 production possible with this token at this position
                     if prod_ids.len() > 1 { continue; }
 
                     // add this token-production pair to prod_map at this lookahead position
                     let prod_id = prod_ids[0];
-                    if let GvarType::Terminal(token_id) = grammar.gvars[*gvar_id].gvar_type {
+                    if let ElementType::Terminal(token_id) = grammar.elems[*elem_id].elem_type {
                         new_map.insert(token_id, prod_id);
     
                         // remove all similar productions (same lookahead token and production id, but possibly different production trees/routes)
                         s1.retain(|(id, p, _)|
                             *id != prod_id
-                            || match grammar.gvars[p[0]].gvar_type {
-                                GvarType::Terminal(t) => t != token_id,
-                                GvarType::NonTerminal => true,
+                            || match grammar.elems[p[0]].elem_type {
+                                ElementType::Terminal(t) => t != token_id,
+                                ElementType::NonTerminal => true,
                             }
                         );
                     }
@@ -164,34 +164,34 @@ impl ParserLL {
         table
     }
 
-    /// Uses the parse table to find which production to use for a Gvar given a sequence of
+    /// Uses the parse table to find which production to use for a Element given a sequence of
     /// input tokens.
-    fn find_next(&self, gvar_id: GvarId, tokens: &[Token]) -> Result<ProductionId> {
-        let gvar = &self.grammar.gvars[gvar_id];
+    fn find_next(&self, elem_id: ElementId, tokens: &[Token]) -> Result<ProductionId> {
+        let elem = &self.grammar.elems[elem_id];
 
-        if gvar.productions.len() == 1 { return Ok(0); }
+        if elem.productions.len() == 1 { return Ok(0); }
 
         if tokens.len() == 0 { return Err(anyhow!("Tokens length is 0!")) }
         for (i, token) in tokens.iter().enumerate() {
-            for (lookahead, map) in &self.parse_table[gvar_id] {
+            for (lookahead, map) in &self.parse_table[elem_id] {
                 if *lookahead > i + 1 { break; }
                 if *lookahead == i + 1 && map.contains_key(&token.token_type) {
                     return Ok(map[&token.token_type]);
                 }
             }
         }
-        return Err(anyhow!("Couldn't find production for {}", gvar.name));
+        return Err(anyhow!("Couldn't find production for {}", elem.name));
     }
 
     pub fn display_parse_table(&self) {
-        for (i, gvar) in self.grammar.gvars.iter().enumerate() {
+        for (i, elem) in self.grammar.elems.iter().enumerate() {
             if self.parse_table[i].len() > 0 {
-                println!("{}", gvar.name);
+                println!("{}", elem.name);
                 for (lookahead, map) in &self.parse_table[i] {
                     for (tok_id, prod_id) in map {
-                        print!("  ({}) {} = ", lookahead, self.grammar.gvars[self.grammar.token_gvar_map[tok_id]].name);
-                        for gvar_id in &gvar.productions[*prod_id] {
-                            print!("{} ", self.grammar.gvars[*gvar_id].name);
+                        print!("  ({}) {} = ", lookahead, self.grammar.elems[self.grammar.token_elem_map[tok_id]].name);
+                        for elem_id in &elem.productions[*prod_id] {
+                            print!("{} ", self.grammar.elems[*elem_id].name);
                         }
                         print!("\n");
                     }
@@ -217,32 +217,32 @@ impl Parser for ParserLL {
             match stk.pop_front() {
                 None => break Ok(()),
                 Some(cur_node_id) => {
-                    let gvar = &self.grammar.gvars[nodes[cur_node_id].gvar_id];
+                    let elem = &self.grammar.elems[nodes[cur_node_id].elem_id];
                     token = match tokens.get(pos) {
                         Some(t) => t,
-                        None => break Err(anyhow!("Missing tokens at {}:{}, expected {}", token.line_num, token.line_pos, gvar.name))
+                        None => break Err(anyhow!("Missing tokens at {}:{}, expected {}", token.line_num, token.line_pos, elem.name))
                     };
 
-                    match gvar.gvar_type {
-                        GvarType::Terminal(token_type_id) => {
+                    match elem.elem_type {
+                        ElementType::Terminal(token_type_id) => {
                             if token_type_id == token.token_type {
                                 pos += 1;
                                 nodes[cur_node_id].token = Some(token.clone());
                             }
                             else {
-                                break Err(anyhow!("Invalid token, found '{}', expected {}", token.text, gvar.name))
+                                break Err(anyhow!("Invalid token, found '{}', expected {}", token.text, elem.name))
                             }
                         },
-                        GvarType::NonTerminal => {
-                            let prod_id = self.find_next(nodes[cur_node_id].gvar_id, &tokens[pos..])?;
+                        ElementType::NonTerminal => {
+                            let prod_id = self.find_next(nodes[cur_node_id].elem_id, &tokens[pos..])?;
                     
                             // store production produced by this nonterm
                             nodes[cur_node_id].prod_id = Some(prod_id);
 
-                            for child_gvar_id in &gvar.productions[prod_id] {
+                            for child_elem_id in &elem.productions[prod_id] {
                                 let new_node_id = nodes.len();
                                 // create new node
-                                nodes.push(self.new_node(new_node_id, *child_gvar_id, Some(cur_node_id)));
+                                nodes.push(self.new_node(new_node_id, *child_elem_id, Some(cur_node_id)));
                                 // associate new node as child of parent node
                                 nodes[cur_node_id].children.push(new_node_id);
                             }
