@@ -246,6 +246,7 @@ impl Parser for ParserLR {
         // push the first token (transformed into the associated Terminal Gvar)
         let mut token = tokens.first().with_context(|| "Input sequence is empty.")?;
         nodes.push(self.new_node(0, self.grammar.token_gvar_map[&token.token_type], None));
+        nodes[0].token = Some(tokens[0].clone());
         input.push(0);
 
         loop {
@@ -276,7 +277,12 @@ impl Parser for ParserLR {
                             Some(t) => t,
                             None => break Err(anyhow!("Missing tokens at {}, in shift from State {} to State {}", token_idx, cur_state_id, next_state))
                         };
-                        nodes.push(self.new_node(next_node_id, self.grammar.token_gvar_map[&token.token_type], None));
+                        let gvar_id = match self.grammar.token_gvar_map.get(&token.token_type) {
+                            Some(id) => id,
+                            None => break Err(anyhow!("Couldn't find Gvar for token: '{}'", token.text))
+                        };
+                        nodes.push(self.new_node(next_node_id, *gvar_id, None));
+                        nodes[next_node_id].token = Some(tokens[token_idx].clone());
                         input.push(next_node_id);
                     }
 
