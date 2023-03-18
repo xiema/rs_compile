@@ -153,14 +153,14 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
         TokenPattern::Surround("//", "\n|$", ""),
         // EndRule
         TokenPattern::Single("\n+[[:space:]]*"),
-        // $$
+        // EOFMarker
         TokenPattern::Single("\\$\\$"),
         // LiteralSymbol
         TokenPattern::Surround("\"", "\"", "\\\\"),
         // PatternSymbol
         TokenPattern::Single("~="),
         // Symbol/Identifier
-        TokenPattern::Single("[^[:space:]]+"),
+        TokenPattern::Single("[[:word:]]+"),
     ],
     // Ignore characters
     TokenPattern::Single("[[:space:]]+"),
@@ -170,15 +170,15 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
 
     let mut gram_gen = GrammarGenerator::new();
 
-    gram_gen.new_nonterm("Language");
-    gram_gen.new_nonterm("Rule_List");
+    gram_gen.new_nonterm("Grammar");
+    gram_gen.new_nonterm("RuleList");
     gram_gen.new_nonterm("Rule");
     gram_gen.new_nonterm("ProductionRule");
     gram_gen.new_nonterm("PatternRule");
-    gram_gen.new_nonterm("RHS_List");
+    gram_gen.new_nonterm("RHSList");
     gram_gen.new_nonterm("RHS");
     gram_gen.new_nonterm("Symbol");
-    gram_gen.new_term("Production_Symbol", 0 as TokenTypeId);
+    gram_gen.new_term("ProductionSymbol", 0 as TokenTypeId);
     gram_gen.new_term("Or", 1 as TokenTypeId);
     gram_gen.new_term("Comment", 2 as TokenTypeId);
     gram_gen.new_term("EndRule", 3 as TokenTypeId);
@@ -188,17 +188,17 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
     gram_gen.new_term("Identifier", 7 as TokenTypeId);
     gram_gen.new_term("$$", -1 as TokenTypeId);
 
-    gram_gen.make_prod("Language", vec!["Rule_List", "$$"]);
-    gram_gen.make_prod("Rule_List", vec!["Rule_List", "Rule"]);
-    gram_gen.make_prod("Rule_List", vec!["Rule_List", "Comment"]);
-    gram_gen.make_prod("Rule_List", vec!["Rule"]);
-    gram_gen.make_prod("Rule_List", vec!["Comment"]);
+    gram_gen.make_prod("Grammar", vec!["RuleList", "$$"]);
+    gram_gen.make_prod("RuleList", vec!["RuleList", "Rule"]);
+    gram_gen.make_prod("RuleList", vec!["RuleList", "Comment"]);
+    gram_gen.make_prod("RuleList", vec!["Rule"]);
+    gram_gen.make_prod("RuleList", vec!["Comment"]);
     gram_gen.make_prod("Rule", vec!["ProductionRule"]);
     gram_gen.make_prod("Rule", vec!["PatternRule"]);
-    gram_gen.make_prod("ProductionRule", vec!["Symbol", "Production_Symbol", "RHS_List", "EndRule"]);
-    gram_gen.make_prod("PatternRule", vec!["Symbol", "PatternSymbol", "LiteralSymbol", "EndRule"]);
-    gram_gen.make_prod("RHS_List", vec!["RHS", "Or", "RHS_List"]);
-    gram_gen.make_prod("RHS_List", vec!["RHS"]);
+    gram_gen.make_prod("ProductionRule", vec!["Identifier", "ProductionSymbol", "RHSList", "EndRule"]);
+    gram_gen.make_prod("PatternRule", vec!["Identifier", "PatternSymbol", "LiteralSymbol", "EndRule"]);
+    gram_gen.make_prod("RHSList", vec!["RHS", "Or", "RHSList"]);
+    gram_gen.make_prod("RHSList", vec!["RHS"]);
     gram_gen.make_prod("RHS", vec!["RHS", "Symbol"]);
     gram_gen.make_prod("RHS", vec!["Symbol"]);
     gram_gen.make_prod("Symbol", vec!["Identifier"]);

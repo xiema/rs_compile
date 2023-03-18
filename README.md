@@ -112,13 +112,61 @@ This grammar is requires more than 1 lookahead token in order to decide whether 
 
 # GrammarReader
 
-Tool for creating Grammars from a grammar description in a text file. Uses a pre-made metagrammar.
+Tool for creating `Grammar`s from a grammar description in a text file. Uses a pre-made metagrammar. Currently only reads LR Grammars.
 
-Currently only reads LR Grammars.
+Example grammar file content:
+
+    Program -> StatementList $$
+    StatementList -> StatementList Statement ";" | Statement ";"
+    Statement -> Assignment | FunctionCall
+    Assignment -> Identifier "=" Expression
+    Expression -> Expression Operator Term | Term
+    Term -> Number | Identifier
+    FunctionCall -> Identifier "\\(" FunctionArgs "\\)"
+    FunctionArgs -> FunctionArgs "," Identifier | Identifier
+
+    Identifier ~= "[[:word:]]+"
+    Number ~= "[[:digit:]]+"
+    Operator ~= "[-+/*]"
+
+Notes:
+- Literal symbols have to be enclosed in double quotes
+- Currently, special Regex characters in literal symbols also need to be "double-escaped" so that correct Regexes can be made from them
+- Non-literal symbols are Non-terminals or Terminals
+- Non-terminals need to have at least 1 production
+- Terminals need to define a regex pattern for recognizing the token they consume. The pattern should be enclosed in double quotes and have special Regex chars doubly escaped (like Literal symbols).
+- Comments can be inserted using `//`
+
+Special symbols of the metagrammar:
+- `->` - production symbol
+- `~=` - pattern symbol (for terminals)
+- `|` - production OR
+- `$$` - END-OF-FILE token of the resulting grammar
+
+Approximation of the metagrammar used by GrammarReader, defined using itself:
+
+    Grammar -> RuleList $$
+    RuleList -> RuleList Rule | RuleList Comment | Rule | Comment
+    Rule -> ProductionRule | PatternRule
+    ProductionRule -> Symbol "->" RHSList EndRule
+    PatternRule -> Symbol "~=" LiteralSymbol EndRule
+    RHSList -> RHS "|" RHSList | RHS
+    RHS -> RHS Symbol | Symbol
+    Symbol -> Identifier | LiteralSymbol | "$$"
+
+    ProductionSymbol ~= "->"
+    PatternSymbol ~= "~="
+    EndRule ~= "\n+[[:space:]]*"
+    Identifier ~= "[[:word:]]+"
+
+    // Comment ~= any text after '//' and before the first line break
+    // LiteralSymbol ~= any text between double quotes, with '\' as an escape char
+
 
 
 ### To Do:
 - Configurable disambiguation
 - More descriptive errors
 - Implied EOF token
-- Grammar conversion
+- Kleene operations
+- Convert Parse tree to Abstract Syntax Tree
