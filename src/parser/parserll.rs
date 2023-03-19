@@ -4,7 +4,7 @@ use std::mem::swap;
 use anyhow::{anyhow, Context};
 use::anyhow::{Result};
 
-use crate::grammar::{Grammar, ProductionId, ElementId, ElementType};
+use crate::grammar::{Grammar, ProductionId, ElementId, ElementType, Production};
 use crate::tokenizer::{Token, TokenTypeId};
 
 use super::{Node, NodeId, Parser};
@@ -63,12 +63,13 @@ impl ParserLL {
                 continue;
             }
             
-            // Tuple of (Production Id, RHS Elements List, Parent Node Element)
-            // RHS Elements (converted to corresponding Tokens) and Production Ids are inspected to find if a unique token 
+            // Tuple of (Production Id, ProductionItem Vector, Parent Node Element)
+            // ProductionItems and ProductionIds are inspected to find if a unique token 
             //   can be found at a particular lookahead position.
-            // Parent Node Element is used to extend the RHS Element Vector if the lookahead exceeds the current length
-            let mut s1: HashSet<(ProductionId, Vec<ElementId>, ElementId)> = grammar.elems[elem_id].productions.iter().enumerate().map(|(i, p)| (i, p.clone(), elem_id)).collect();
-            let mut s2: HashSet<(ProductionId, Vec<ElementId>, ElementId)> = HashSet::new();
+            // Parent Node Element is used to extend the ProductionItem Vector if the lookahead exceeds the current length
+            let mut s1: HashSet<(ProductionId, Production, ElementId)> = grammar.elems[elem_id].productions.iter().enumerate().map(
+                |(i, p)| (i, p.clone(), elem_id)).collect();
+            let mut s2: HashSet<(ProductionId, Production, ElementId)> = HashSet::new();
             let mut lookahead = 1;
 
             while !s1.is_empty() {
@@ -86,10 +87,10 @@ impl ParserLL {
                             }
                         }
                         else {
-                            match grammar.elems[rhs[0]].elem_type {
+                            match grammar.elems[rhs[0].elem_id].elem_type {
                                 ElementType::NonTerminal => {
                                     // replace nonterminals at front of rhs with corresponding productions
-                                    for sub_prod in &grammar.elems[rhs[0]].productions {
+                                    for sub_prod in &grammar.elems[rhs[0].elem_id].productions {
                                         let mut new_prod = sub_prod.clone();
                                         new_prod.extend_from_slice(&rhs[1..]);
                                         s2.insert((*prod_id, new_prod, *id_after));
@@ -113,11 +114,11 @@ impl ParserLL {
                 // map of terminals to the possible productions if the terminal is seen at the current position
                 let mut terminal_to_prod: HashMap<ElementId, Vec<ProductionId>> = HashMap::new();
                 for (prod_id, rhs, _) in &s1 {
-                    if !terminal_to_prod.contains_key(&rhs[0]) {
-                        terminal_to_prod.insert(rhs[0], Vec::new());
+                    if !terminal_to_prod.contains_key(&rhs[0].elem_id) {
+                        terminal_to_prod.insert(rhs[0].elem_id, Vec::new());
                     }
-                    if !terminal_to_prod[&rhs[0]].contains(prod_id) {
-                        terminal_to_prod.get_mut(&rhs[0]).unwrap().push(*prod_id);
+                    if !terminal_to_prod[&rhs[0].elem_id].contains(prod_id) {
+                        terminal_to_prod.get_mut(&rhs[0].elem_id).unwrap().push(*prod_id);
                     }
                 }
 
@@ -135,7 +136,7 @@ impl ParserLL {
                         // remove all similar productions (same lookahead token and production id, but possibly different production trees/routes)
                         s1.retain(|(id, p, _)|
                             *id != prod_id
-                            || match grammar.elems[p[0]].elem_type {
+                            || match grammar.elems[p[0].elem_id].elem_type {
                                 ElementType::Terminal(t) => t != token_id,
                                 ElementType::NonTerminal => true,
                             }
@@ -190,8 +191,8 @@ impl ParserLL {
                 for (lookahead, map) in &self.parse_table[i] {
                     for (tok_id, prod_id) in map {
                         print!("  ({}) {} = ", lookahead, self.grammar.elems[self.grammar.token_elem_map[tok_id]].name);
-                        for elem_id in &elem.productions[*prod_id] {
-                            print!("{} ", self.grammar.elems[*elem_id].name);
+                        for itm in &elem.productions[*prod_id] {
+                            print!("{} ", self.grammar.elems[itm.elem_id].name);
                         }
                         print!("\n");
                     }
@@ -239,10 +240,10 @@ impl Parser for ParserLL {
                             // store production produced by this nonterm
                             nodes[cur_node_id].prod_id = Some(prod_id);
 
-                            for child_elem_id in &elem.productions[prod_id] {
+                            for itm in &elem.productions[prod_id] {
                                 let new_node_id = nodes.len();
                                 // create new node
-                                nodes.push(self.new_node(new_node_id, *child_elem_id, Some(cur_node_id)));
+                                nodes.push(self.new_node(new_node_id, itm.elem_id, Some(cur_node_id)));
                                 // associate new node as child of parent node
                                 nodes[cur_node_id].children.push(new_node_id);
                             }
@@ -250,7 +251,7 @@ impl Parser for ParserLL {
                             for child_id in nodes[cur_node_id].children.iter().rev() {
                                 stk.push_front(*child_id);
                             }
-                        }
+                        },
                     }
                 }
             }

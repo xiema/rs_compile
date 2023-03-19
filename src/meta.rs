@@ -1,7 +1,7 @@
 use std::collections::{VecDeque, HashMap};
 
 use anyhow::Context;
-use crate::grammar::{GrammarGenerator};
+use crate::grammar::{GrammarGenerator, ProductionItem};
 use crate::parser::{Node, NodeId, ParserLR, Parser};
 use crate::tokenizer::{TokenTypeId, TokenPattern};
 use crate::tokenizer::Tokenizer;
@@ -131,7 +131,9 @@ impl GrammarReader {
                     }
                 }
 
-                gram_gen.new_prod(def_elem_id, rhs_def);
+                gram_gen.new_prod(def_elem_id, rhs_def.iter().map(
+                    |x| ProductionItem {elem_id: *x, kleene_closure: false}
+                ).collect());
             }
         }
 

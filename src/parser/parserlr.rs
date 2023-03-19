@@ -81,7 +81,7 @@ impl ParserLR {
             // get starting closures and follow ids
             for (elem_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
                 if *prod_pos < grammar.elems[*elem_id].productions[*prod_id].len() {
-                    let id = grammar.elems[*elem_id].productions[*prod_id][*prod_pos];
+                    let id = grammar.elems[*elem_id].productions[*prod_id][*prod_pos].elem_id;
                     if matches!(grammar.elems[id].elem_type, ElementType::NonTerminal) {
                         for i in 0..grammar.elems[id].productions.len() {
                             closures.insert((id, i));
@@ -94,7 +94,7 @@ impl ParserLR {
             loop {
                 let mut new_closures = HashSet::new();
                 for (elem_id, prod_id) in &closures {
-                    let id = grammar.elems[*elem_id].productions[*prod_id][0];
+                    let id = grammar.elems[*elem_id].productions[*prod_id][0].elem_id;
                     if matches!(grammar.elems[id].elem_type, ElementType::NonTerminal) {
                         for i in 0..grammar.elems[id].productions.len() {
                             let new_closure = (id, i);
@@ -116,13 +116,13 @@ impl ParserLR {
                     for (rhs, _) in &grammar.elems[*elem_id].follow_set {
                         
                         // TODO: Error handling
-                        if follow_ids.contains(&rhs[0]) || seen.contains(&rhs[0]) {
+                        if follow_ids.contains(&rhs[0].elem_id) || seen.contains(&rhs[0].elem_id) {
                             panic!("Grammar is not LR(1)");
                         }
-                        action_map.insert(rhs[0], ParseAction::Reduce(*elem_id, *prod_id));
-                        seen.insert(rhs[0]);
+                        action_map.insert(rhs[0].elem_id, ParseAction::Reduce(*elem_id, *prod_id));
+                        seen.insert(rhs[0].elem_id);
 
-                        for id in &grammar.elems[rhs[0]].first_set {
+                        for id in &grammar.elems[rhs[0].elem_id].first_set {
                             if follow_ids.contains(id) || seen.contains(id) {
                                 panic!("Grammar is not LR(1)");
                             }
@@ -141,7 +141,7 @@ impl ParserLR {
                 // bases
                 for (elem_id, prod_id, prod_pos) in &state_defs[cur_state_id] {
                     if *prod_pos < grammar.elems[*elem_id].productions[*prod_id].len() {
-                        let id = grammar.elems[*elem_id].productions[*prod_id][*prod_pos];
+                        let id = grammar.elems[*elem_id].productions[*prod_id][*prod_pos].elem_id;
                         if id == follow_id {
                             new_state.insert((*elem_id, *prod_id, prod_pos + 1));
                             reduce |= prod_pos + 1 == grammar.elems[*elem_id].productions[*prod_id].len();
@@ -150,7 +150,7 @@ impl ParserLR {
                 }
                 // closures
                 for (elem_id, prod_id) in &closures {
-                    let id = grammar.elems[*elem_id].productions[*prod_id][0];
+                    let id = grammar.elems[*elem_id].productions[*prod_id][0].elem_id;
                     if id == follow_id {
                         new_state.insert((*elem_id, *prod_id, 1));
                         reduce |= 1 == grammar.elems[*elem_id].productions[*prod_id].len();
@@ -197,11 +197,11 @@ impl ParserLR {
 
             for (elem_id, prod_id, prod_pos) in state_def {
                 print!("  {} --> ", self.grammar.elems[*elem_id].name);
-                for (j, id) in self.grammar.elems[*elem_id].productions[*prod_id].iter().enumerate() {
+                for (j, itm) in self.grammar.elems[*elem_id].productions[*prod_id].iter().enumerate() {
                     if j == *prod_pos {
                         print!(". ");
                     }
-                    print!("{} ", self.grammar.elems[*id].name);
+                    print!("{} ", self.grammar.elems[itm.elem_id].name);
                 }
                 print!("\n")
             }
@@ -215,14 +215,14 @@ impl ParserLR {
                         ParseAction::Shift(next_state) => print!("Shift & Goto {}", next_state),
                         ParseAction::Reduce(elem_id, prod_id) => {
                             print!("Reduce {} -> ", self.grammar.elems[*elem_id].name);
-                            for id in &self.grammar.elems[*elem_id].productions[*prod_id] {
-                                print!("{} ", self.grammar.elems[*id].name);
+                            for itm in &self.grammar.elems[*elem_id].productions[*prod_id] {
+                                print!("{} ", self.grammar.elems[itm.elem_id].name);
                             }
                         },
                         ParseAction::ShiftReduce(elem_id, prod_id) => {
                             print!("Shift & Reduce {} -> ", self.grammar.elems[*elem_id].name);
-                            for id in &self.grammar.elems[*elem_id].productions[*prod_id] {
-                                print!("{} ", self.grammar.elems[*id].name);
+                            for itm in &self.grammar.elems[*elem_id].productions[*prod_id] {
+                                print!("{} ", self.grammar.elems[itm.elem_id].name);
                             }
                         }
                     }
