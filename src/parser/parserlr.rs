@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result, anyhow};
 
-use crate::grammar::{Grammar, ProductionId, ElementId, ElementType};
+use crate::grammar::{Grammar, ProductionId, ElementId, ElementType, GrammarGenerator, ProductionItem};
 use crate::tokenizer::{Token, TokenTypeId};
 
 use super::*;
@@ -40,6 +40,39 @@ impl ParserLR {
             lookahead: n,
         }
     }
+
+    /// Constructs a parser that will create a concrete syntax tree
+    /// Extra grammar elements will be added to simplify parsing, and 
+    /// can be removed afterwards with the prune method
+    fn concrete_from(grammar: &Grammar) -> Self {
+        let mut gen = GrammarGenerator::new();
+        gen.copy_grammar(grammar);
+        
+        for i in 0..grammar.elems.len() {
+            for j in 0.. grammar.elems[i].productions.len() {
+                for itm_id in 0..grammar.elems[i].productions[j].len() {
+                    let itm = &grammar.elems[i].productions[j][itm_id];
+                    if itm.kleene_closure {
+                        let new_elem_name = format!("{}*", grammar.elems[itm.elem_id].name);
+                        let new_id = if gen.elem_map.contains_key(&new_elem_name) {
+                            gen.elem_map[&new_elem_name]
+                        }
+                        else {
+                            gen.new_pseudo(&new_elem_name)
+                        };
+    
+                        gen.new_prod(new_id, vec![ProductionItem::new(new_id, false), ProductionItem::new(itm.elem_id, false)]);
+                        gen.new_prod(new_id, vec![ProductionItem::new(itm.elem_id, false)]);
+                        gen.elems[i].productions[j][itm_id].elem_id = new_id;
+                    }
+                }
+            }
+        }
+
+        let grammar = gen.generate();
+        Self::new(&grammar)
+    }
+
 
     /// Creates a new node, optionally associating it with a parent.
     pub fn new_node(&self, new_node_id: NodeId, elem_id: ElementId, parent: Option<NodeId>) -> Node {
@@ -238,6 +271,23 @@ impl ParserLR {
         let (_i, map) = &self.parse_table[cur_state_id][0];
         map.get(&next_elem_id).with_context(|| format!("Missing transition in State {} on input {}", cur_state_id, self.grammar.elems[next_elem_id].name))
     }
+
+    /// Prunes extra grammar elements from a concrete syntax tree
+    pub fn prune(nodes: &Vec<Node>, root_id: NodeId) {
+        let mut stk = Vec::new();
+        stk.push((root_id, false));
+        while let Some((node_id, visited)) = stk.pop() {
+            if visited {
+
+            }
+            else {
+                stk.push((node_id, true));
+                for child_id in nodes[node_id].children.iter().rev() {
+                    stk.push((*child_id, false));
+                }
+            }
+        }
+    }
 }
 
 impl Parser for ParserLR {
@@ -356,7 +406,7 @@ mod tests {
 
     use super::*;
 
-    fn create_lang() -> (Tokenizer, Grammar) {
+    fn create_lang_simple() -> (Tokenizer, Grammar) {
         let tokenizer = Tokenizer::new(vec![
             TokenPattern::Single("[[:digit:]]+"),
             TokenPattern::Single("[-+*/]"),
@@ -387,10 +437,40 @@ mod tests {
         (tokenizer, gram)
     }
 
+    fn create_lang() -> (Tokenizer, Grammar) {
+        let tokenizer = Tokenizer::new(vec![
+            TokenPattern::Single("[[:digit:]]+"),
+            TokenPattern::Single("[-+*/]"),
+            TokenPattern::Single("[;]"),
+        ],
+            TokenPattern::Single("[[:space:]]"),
+            None
+        );
+
+        let mut gram_gen = GrammarGenerator::new();
+        
+        gram_gen.new_nonterm("Program");
+        gram_gen.new_nonterm("Statement");
+        gram_gen.new_nonterm("Expression");
+        gram_gen.new_term("Term", 0 as TokenTypeId);
+        gram_gen.new_term("Operator", 1 as TokenTypeId);
+        gram_gen.new_term("EndExpression", 2 as TokenTypeId);
+        gram_gen.new_term("EOF", -1 as TokenTypeId);
+
+        gram_gen.make_prod2("Program", vec![("Statement", true), ("EOF", false)]);
+        gram_gen.make_prod("Statement", vec!["Expression", "EndExpression"]);
+        gram_gen.make_prod("Expression", vec!["Expression", "Operator", "Term"]);
+        gram_gen.make_prod("Expression", vec!["Term"]);
+
+        let gram = gram_gen.generate();
+
+        (tokenizer, gram)
+    }
+
     #[allow(unused_variables)]
     #[test]
     fn parserlr_test() {
-        let (mut tokenizer, gram) = create_lang();
+        let (mut tokenizer, gram) = create_lang_simple();
 
         // println!("{}", gram);
 
@@ -401,12 +481,23 @@ mod tests {
         let nodes = parser.parse(&tokens).unwrap();
 
         // display_tree(nodes.len()-1, &nodes, &gram, 0);
+
+        let (mut tokenizer, gram) = create_lang();
+
+        let code = "\n1 + 1;\n\n2 + 2;\n\n3 + 1 + 2 +2;";
+        let tokens = tokenizer.tokenize(code).unwrap();
+        
+        let parser = ParserLR::concrete_from(&gram);
+        println!("{}", parser.grammar);
+        parser.display_parse_table();
+        let nodes = parser.parse(&tokens).unwrap();
+        display_tree(nodes.len()-1, &nodes, &parser.grammar, 0);
     }
 
     #[allow(unused_variables)]
     #[test]
     fn parserlr_err_test() {
-        let (mut tokenizer, gram) = create_lang();
+        let (mut tokenizer, gram) = create_lang_simple();
         let parser = ParserLR::new(&gram);
 
         let code = "1 + 1";

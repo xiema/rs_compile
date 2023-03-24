@@ -29,19 +29,24 @@ pub trait Parser {
 #[allow(dead_code)]
 pub fn display_tree(node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar, level: usize) {
     let indent = String::from("  ").repeat(level);
-    match gram.elems[nodes[node_id].elem_id].elem_type {
+    let node = &nodes[node_id];
+    let elem = &gram.elems[node.elem_id];
+    match elem.elem_type {
         ElementType::Terminal(_) => {
-            print!("{}{}", indent, gram.elems[nodes[node_id].elem_id].name);
+            println!("{}{} >>> '{}'", indent, elem.name, node.token.as_ref().unwrap().text);
         },
         ElementType::NonTerminal => {
-            print!("{}{} : [PROD {}]", indent, gram.elems[nodes[node_id].elem_id].name, nodes[node_id].prod_id.unwrap());
-        }
-    }
-    match &nodes[node_id].token {
-        Some(t) => println!(" >>> '{}'", t.text),
-        None => println!()
-    }
-    for child in &nodes[node_id].children {
-        display_tree(*child, nodes, gram, level + 1);
+            if elem.generated {
+                for child in &nodes[node_id].children {
+                    display_tree(*child, nodes, gram, level);
+                }
+            }
+            else {
+                println!("{}{} : [PROD {}]", indent, elem.name, nodes[node_id].prod_id.unwrap());
+                for child in &nodes[node_id].children {
+                    display_tree(*child, nodes, gram, level + 1);
+                }
+            }
+        },
     }
 }

@@ -22,7 +22,7 @@ pub struct ProductionItem {
 }
 
 impl ProductionItem {
-    fn new(elem_id: ElementId, kleene_closure: bool) -> Self {
+    pub fn new(elem_id: ElementId, kleene_closure: bool) -> Self {
         Self {
             elem_id,
             kleene_closure,
@@ -37,6 +37,7 @@ pub struct Element {
     pub id: ElementId,
     pub elem_type: ElementType,
     pub name: String,
+    pub generated: bool,
 
     pub productions: Vec<Production>,
     pub follow_set: FollowSet,
@@ -184,6 +185,7 @@ impl GrammarGenerator {
                 let mut tail_elem = Element {
                     id: tail_elem_id,
                     elem_type: ElementType::NonTerminal,
+                    generated: true,
                     name: elems[i].name.clone() + "'",
                     productions: vec![vec![]],
                     follow_set: Vec::new(),
@@ -238,6 +240,7 @@ impl GrammarGenerator {
             let mut tail_elem = Element {
                 id: tail_elem_id,
                 elem_type: ElementType::NonTerminal,
+                generated: true,
                 name: elems[i].name.clone() + "''",
                 productions: vec![],
                 follow_set: Vec::new(),
@@ -373,6 +376,30 @@ impl GrammarGenerator {
         self.elems.push(Element {
             id: new_elem_id,
             elem_type: ElementType::NonTerminal,
+            generated: false,
+            name: String::from(name),
+
+            productions: Vec::new(),
+            follow_set: FollowSet::new(),
+            first_set: HashSet::new(),
+        });
+
+        self.elem_map.insert(String::from(name), new_elem_id);
+        
+        new_elem_id
+    }
+   
+    pub fn new_pseudo(&mut self, name: &str) -> ElementId {
+        if self.elem_map.contains_key(name) {
+            return self.elem_map[name];
+        }
+
+        let new_elem_id = self.elems.len();
+
+        self.elems.push(Element {
+            id: new_elem_id,
+            elem_type: ElementType::NonTerminal,
+            generated: false,
             name: String::from(name),
 
             productions: Vec::new(),
@@ -395,6 +422,7 @@ impl GrammarGenerator {
         self.elems.push(Element {
             id: new_elem_id,
             elem_type: ElementType::Terminal(token_type),
+            generated: false,
             name: String::from(name),
 
             productions: Vec::new(),
