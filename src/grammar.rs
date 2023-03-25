@@ -366,19 +366,25 @@ impl GrammarGenerator {
         }
     }
    
-    pub fn new_nonterm(&mut self, name: &str) -> ElementId {
+    pub fn new_elem(&mut self, name: &str, elem_type: ElementType, generated: bool) -> ElementId {
         if self.elem_map.contains_key(name) {
             return self.elem_map[name];
         }
-
+        
         let new_elem_id = self.elems.len();
+        match elem_type {
+            ElementType::Terminal(token_type) => {
+                self.token_elem_map.insert(token_type, new_elem_id);
+            },
+            _ => (),
+        }
 
         self.elems.push(Element {
             id: new_elem_id,
-            elem_type: ElementType::NonTerminal,
-            generated: false,
+            elem_type: elem_type,
+            generated: generated,
             name: String::from(name),
-
+            
             productions: Vec::new(),
             follow_set: FollowSet::new(),
             first_set: HashSet::new(),
@@ -387,53 +393,14 @@ impl GrammarGenerator {
         self.elem_map.insert(String::from(name), new_elem_id);
         
         new_elem_id
+    }
+    
+    pub fn new_nonterm(&mut self, name: &str) -> ElementId {
+        self.new_elem(name, ElementType::NonTerminal, false)
     }
    
-    pub fn new_pseudo(&mut self, name: &str) -> ElementId {
-        if self.elem_map.contains_key(name) {
-            return self.elem_map[name];
-        }
-
-        let new_elem_id = self.elems.len();
-
-        self.elems.push(Element {
-            id: new_elem_id,
-            elem_type: ElementType::NonTerminal,
-            generated: false,
-            name: String::from(name),
-
-            productions: Vec::new(),
-            follow_set: FollowSet::new(),
-            first_set: HashSet::new(),
-        });
-
-        self.elem_map.insert(String::from(name), new_elem_id);
-        
-        new_elem_id
-    }
-
     pub fn new_term(&mut self, name: &str, token_type: TokenTypeId) -> ElementId {
-        if self.elem_map.contains_key(name) {
-            return self.elem_map[name];
-        }
-
-        let new_elem_id = self.elems.len();
-
-        self.elems.push(Element {
-            id: new_elem_id,
-            elem_type: ElementType::Terminal(token_type),
-            generated: false,
-            name: String::from(name),
-
-            productions: Vec::new(),
-            follow_set: FollowSet::new(),
-            first_set: HashSet::new(),
-        });
-
-        self.elem_map.insert(String::from(name), new_elem_id);
-        self.token_elem_map.insert(token_type, new_elem_id);
-
-        new_elem_id
+        self.new_elem(name, ElementType::Terminal(token_type), false)
     }
 
     pub fn new_prod(&mut self, def_id: ElementId, rhs: Production) -> ProductionId {

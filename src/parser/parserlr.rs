@@ -58,7 +58,7 @@ impl ParserLR {
                             gen.elem_map[&new_elem_name]
                         }
                         else {
-                            gen.new_pseudo(&new_elem_name)
+                            gen.new_elem(&new_elem_name, ElementType::NonTerminal, true)
                         };
     
                         gen.new_prod(new_id, vec![ProductionItem::new(new_id, false), ProductionItem::new(itm.elem_id, false)]);
