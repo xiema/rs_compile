@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{Context, Result, anyhow};
 
 use crate::grammar::{Grammar, ProductionId, ElementId, ElementType, GrammarGenerator, ProductionItem};
-use crate::tokenizer::{Token, TokenTypeId};
+use crate::tokenizer::{Token};
 
 use super::*;
 
@@ -20,13 +20,11 @@ pub struct ParserLR {
     lookahead: usize,
 }
 
-pub enum ParserLRErr {
-    UnknownStateShift(usize, usize, TokenTypeId),
-}
-
 impl ParserLR {
     pub fn new(grammar: &Grammar) -> Self {
-        let (state_defs, table) = Self::get_parse_table(grammar);
+        let grammar = Self::concrete_from(&grammar);
+
+        let (state_defs, table) = Self::get_parse_table(&grammar);
         let n = table.iter().fold(0, 
                 |acc, x| 
                     std::cmp::max(acc, x.iter().fold(0,
@@ -34,17 +32,15 @@ impl ParserLR {
                             std::cmp::max(acc, x.0))));
 
         Self {
-            grammar: grammar.clone(),
+            grammar: grammar,
             parse_table: table,
             state_defs: state_defs,
             lookahead: n,
         }
     }
 
-    /// Constructs a parser that will create a concrete syntax tree
-    /// Extra grammar elements will be added to simplify parsing, and 
-    /// can be removed afterwards with the prune method
-    fn concrete_from(grammar: &Grammar) -> Self {
+    /// Returns an equivalent new Grammar with abstract elements (kleene closures) replaced
+    fn concrete_from(grammar: &Grammar) -> Grammar {
         let mut gen = GrammarGenerator::new();
         gen.copy_grammar(grammar);
         
@@ -69,8 +65,7 @@ impl ParserLR {
             }
         }
 
-        let grammar = gen.generate();
-        Self::new(&grammar)
+        gen.generate()
     }
 
 
@@ -487,7 +482,7 @@ mod tests {
         let code = "\n1 + 1;\n\n2 + 2;\n\n3 + 1 + 2 +2;";
         let tokens = tokenizer.tokenize(code).unwrap();
         
-        let parser = ParserLR::concrete_from(&gram);
+        let parser = ParserLR::new(&gram);
         println!("{}", parser.grammar);
         parser.display_parse_table();
         let nodes = parser.parse(&tokens).unwrap();

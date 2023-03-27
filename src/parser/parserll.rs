@@ -17,11 +17,13 @@ pub struct ParserLL {
 
 impl ParserLL {
     pub fn new(grammar: &Grammar) -> Self {
+        let grammar = Self::concrete_from(grammar);
+
         if !grammar.is_parseable_ll() {
             panic!("ParserLL can't parse grammar");
         }
 
-        let table = Self::get_parse_table(grammar);
+        let table = Self::get_parse_table(&grammar);
         let n = table.iter().fold(0, 
                 |acc, x| 
                     std::cmp::max(acc, x.iter().fold(0,
@@ -29,13 +31,13 @@ impl ParserLL {
                             std::cmp::max(acc, x.0))));
 
         Self {
-            grammar: grammar.clone(),
+            grammar: grammar,
             parse_table: table,
             lookahead: n,
         }
     }
 
-    pub fn concrete_from(grammar: &Grammar) -> Self {
+    fn concrete_from(grammar: &Grammar) -> Grammar {
         let mut gen = GrammarGenerator::new();
         gen.copy_grammar(grammar);
         
@@ -60,8 +62,7 @@ impl ParserLL {
             }
         }
 
-        let grammar = gen.generate_ll();
-        Self::new(&grammar)
+        gen.generate_ll()
     }
 
     /// Creates a new node, optionally associating it with a parent.
@@ -413,7 +414,7 @@ mod tests {
 
         let (mut tokenizer, gram) = create_lang();
         let tokens = tokenizer.tokenize(code).unwrap();
-        let parser = ParserLL::concrete_from(&gram);
+        let parser = ParserLL::new(&gram);
         let nodes = parser.parse(&tokens).unwrap();
         println!("{}", parser.grammar);
         display_tree(0, &nodes, &parser.grammar, 0);
