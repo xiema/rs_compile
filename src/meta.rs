@@ -27,9 +27,12 @@ impl GrammarReader {
 
         let mut symbol_table = HashMap::new();
         let mut terminals = Vec::new();
+
+        // TODO: add func to check elem ids without storing local vars
         let elem_id_pattern_rule = self.grammar.elem_id_map["PatternRule"];
         let elem_id_production_rule = self.grammar.elem_id_map["ProductionRule"];
         let elem_id_literal = self.grammar.elem_id_map["LiteralSymbol"];
+        let elem_id_kleene = self.grammar.elem_id_map["KleeneClosure"];
         let elem_id_eof_marker = self.grammar.elem_id_map["EOFMarker"];
         let mut gram_gen = GrammarGenerator::new();
 
@@ -44,6 +47,7 @@ impl GrammarReader {
         for node_id in iter_descendants("Rule", root, &nodes, &self.grammar) {
             let node = &nodes[nodes[node_id].children[0]];
 
+            // Pattern Rules
             if node.elem_id == elem_id_pattern_rule {
                 let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
                 let rhs = &nodes[get_child("LiteralSymbol", node_id, &nodes, &self.grammar).unwrap()];
@@ -55,6 +59,7 @@ impl GrammarReader {
                 let tuple = (name.clone(), (&rhs.token.as_ref().unwrap().text).clone());
                 if !terminals.contains(&tuple) { terminals.push(tuple) };
             }
+            // Production Rules
             else if node.elem_id == elem_id_production_rule {
                 let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
                 let name = &lhs.token.as_ref().unwrap().text;
@@ -116,24 +121,36 @@ impl GrammarReader {
                 for sym_id in iter_descendants("Symbol", rhs_node_id, &nodes, &self.grammar) {
                     let symbol = &nodes[nodes[sym_id].children[0]];
                     let tok_text_full = &symbol.token.as_ref().unwrap().text;
-                    let tok_text = if symbol.elem_id == elem_id_literal {
-                        &tok_text_full[1..tok_text_full.len()-1]
-                    }
-                    else { // Identifier
-                        tok_text_full.as_str()
-                    };
 
                     // special
                     if symbol.elem_id == elem_id_eof_marker {
-                        rhs_def.push(1);
+                        rhs_def.push((1, false));
                     }
                     else {
-                        rhs_def.push(*symbol_table.get(tok_text).with_context(|| format!("Unknown symbol {}", tok_text)).unwrap());
+                        let (tok_text, kleene) = if symbol.elem_id == elem_id_literal {
+                            (&tok_text_full[1..tok_text_full.len()-1], false)
+                        }
+                        else { // Identifier
+                            if nodes[sym_id].children.len() > 1 {
+                                // Kleene
+                                if nodes[nodes[sym_id].children[1]].elem_id == elem_id_kleene {
+                                    (tok_text_full.as_str(), true)
+                                }
+                                else {
+                                    panic!("Expected Kleene closure");
+                                }
+                            }
+                            else {
+                                (tok_text_full.as_str(), false)
+                            }
+                        };
+
+                        rhs_def.push((*symbol_table.get(tok_text).with_context(|| format!("Unknown symbol {}", tok_text)).unwrap(), kleene));
                     }
                 }
 
                 gram_gen.new_prod(def_elem_id, rhs_def.iter().map(
-                    |x| ProductionItem {elem_id: *x, kleene_closure: false}
+                    |(x, k)| ProductionItem {elem_id: *x, kleene_closure: *k}
                 ).collect());
             }
         }
@@ -164,6 +181,8 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
         TokenPattern::Single("~="),
         // Symbol/Identifier
         TokenPattern::Single("[[:alnum:]_]+"),
+        // Kleene Closure
+        TokenPattern::Single("\\*"),
     ],
     // Ignore characters
     TokenPattern::Single("[[:space:]]+"),
@@ -189,6 +208,7 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
     gram_gen.new_term("LiteralSymbol", 5 as TokenTypeId);
     gram_gen.new_term("PatternSymbol", 6 as TokenTypeId);
     gram_gen.new_term("Identifier", 7 as TokenTypeId);
+    gram_gen.new_term("KleeneClosure", 8 as TokenTypeId);
     gram_gen.new_term("$$", -1 as TokenTypeId);
 
     gram_gen.make_prod("Grammar", vec!["RuleList", "$$"]);
@@ -205,6 +225,7 @@ fn create_lang_gen() -> (Tokenizer, GrammarGenerator) {
     gram_gen.make_prod("RHS", vec!["RHS", "Symbol"]);
     gram_gen.make_prod("RHS", vec!["Symbol"]);
     gram_gen.make_prod("Symbol", vec!["Identifier"]);
+    gram_gen.make_prod("Symbol", vec!["Identifier", "KleeneClosure"]);
     gram_gen.make_prod("Symbol", vec!["LiteralSymbol"]);
     gram_gen.make_prod("Symbol", vec!["EOFMarker"]);
 

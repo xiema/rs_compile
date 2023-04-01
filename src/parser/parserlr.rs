@@ -14,7 +14,7 @@ pub enum ParseAction {
 }
 
 pub struct ParserLR {
-    grammar: Grammar,
+    pub grammar: Grammar,
     parse_table: Vec<Vec<(usize, HashMap<ElementId, ParseAction>)>>,
     state_defs: Vec<HashSet<(ElementId, ProductionId, usize)>>,
     lookahead: usize,

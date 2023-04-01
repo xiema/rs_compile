@@ -10,18 +10,17 @@ use crate::tokenizer::{Token, TokenTypeId};
 use super::{Node, NodeId, Parser};
 
 pub struct ParserLL {
-    grammar: Grammar,
+    pub grammar: Grammar,
     parse_table: Vec<Vec<(usize, HashMap<TokenTypeId, ProductionId>)>>,
     lookahead: usize,
 }
 
 impl ParserLL {
     pub fn new(grammar: &Grammar) -> Self {
-        let grammar = Self::concrete_from(grammar);
-
         if !grammar.is_parseable_ll() {
             panic!("ParserLL can't parse grammar");
         }
+        let grammar = Self::concrete_from(grammar);
 
         let table = Self::get_parse_table(&grammar);
         let n = table.iter().fold(0, 
@@ -410,14 +409,6 @@ mod tests {
         let nodes = parser.parse(&tokens).unwrap();
         // println!("{}", gram);
         // display_tree(0, &nodes, &gram, 0);
-        
-
-        let (mut tokenizer, gram) = create_lang();
-        let tokens = tokenizer.tokenize(code).unwrap();
-        let parser = ParserLL::new(&gram);
-        let nodes = parser.parse(&tokens).unwrap();
-        println!("{}", parser.grammar);
-        display_tree(0, &nodes, &parser.grammar, 0);
     }
 
     #[allow(unused_variables)]
