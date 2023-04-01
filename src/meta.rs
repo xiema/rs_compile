@@ -95,6 +95,7 @@ impl GrammarReader {
 
 
         // Grammar Setup
+        // TODO: Check that all nonterminals have at least 1 production
         for (name, elem_id) in &mut symbol_table {
             if terminals.iter().any(|(a,_)| a == name) {
                 *elem_id = gram_gen.new_term(name, token_map[name]);
