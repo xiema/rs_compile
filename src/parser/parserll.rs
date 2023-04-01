@@ -7,7 +7,7 @@ use::anyhow::{Result};
 use crate::grammar::{Grammar, ProductionId, ElementId, ElementType, Production, GrammarGenerator, ProductionItem};
 use crate::tokenizer::{Token, TokenTypeId};
 
-use super::{Node, NodeId, Parser};
+use super::{Node, NodeId, Tree, Parser};
 
 pub struct ParserLL {
     pub grammar: Grammar,
@@ -232,13 +232,13 @@ impl ParserLL {
 }
 
 impl Parser for ParserLL {
-    fn parse(&self, tokens: &Vec<Token>) -> Result<Vec<Node>> {
-        let mut nodes: Vec<Node> = Vec::new();
+    fn parse(&self, tokens: &Vec<Token>) -> Result<Tree> {
+        let mut tree = Tree::new(&self.grammar);
         let mut stk: VecDeque<NodeId> = VecDeque::new();
         let mut pos = 0;
 
         // Create and push ROOT
-        nodes.push(self.new_node(0, 0, None));
+        tree.nodes.push(self.new_node(0, 0, None));
         stk.push_front(0);
 
         let mut token = tokens.get(pos).with_context(|| "Empty token sequence")?;
@@ -247,7 +247,7 @@ impl Parser for ParserLL {
             match stk.pop_front() {
                 None => break Ok(()),
                 Some(cur_node_id) => {
-                    let elem = &self.grammar.elems[nodes[cur_node_id].elem_id];
+                    let elem = &self.grammar.elems[tree.nodes[cur_node_id].elem_id];
                     token = match tokens.get(pos) {
                         Some(t) => t,
                         None => break Err(anyhow!("Missing tokens at {}:{}, expected {}", token.line_num, token.line_pos, elem.name))
@@ -257,27 +257,27 @@ impl Parser for ParserLL {
                         ElementType::Terminal(token_type_id) => {
                             if token_type_id == token.token_type {
                                 pos += 1;
-                                nodes[cur_node_id].token = Some(token.clone());
+                                tree.nodes[cur_node_id].token = Some(token.clone());
                             }
                             else {
                                 break Err(anyhow!("Invalid token, found '{}', expected {}", token.text, elem.name))
                             }
                         },
                         ElementType::NonTerminal => {
-                            let prod_id = self.find_next(nodes[cur_node_id].elem_id, &tokens[pos..])?;
+                            let prod_id = self.find_next(tree.nodes[cur_node_id].elem_id, &tokens[pos..])?;
                     
                             // store production produced by this nonterm
-                            nodes[cur_node_id].prod_id = Some(prod_id);
+                            tree.nodes[cur_node_id].prod_id = Some(prod_id);
 
                             for itm in &elem.productions[prod_id] {
-                                let new_node_id = nodes.len();
+                                let new_node_id = tree.nodes.len();
                                 // create new node
-                                nodes.push(self.new_node(new_node_id, itm.elem_id, Some(cur_node_id)));
+                                tree.nodes.push(self.new_node(new_node_id, itm.elem_id, Some(cur_node_id)));
                                 // associate new node as child of parent node
-                                nodes[cur_node_id].children.push(new_node_id);
+                                tree.nodes[cur_node_id].children.push(new_node_id);
                             }
                             // push new nodes onto stack
-                            for child_id in nodes[cur_node_id].children.iter().rev() {
+                            for child_id in tree.nodes[cur_node_id].children.iter().rev() {
                                 stk.push_front(*child_id);
                             }
                         },
@@ -286,7 +286,7 @@ impl Parser for ParserLL {
             }
         }.with_context(|| format!("Parser error at {}:{}", token.line_num, token.line_pos))?;
 
-        return Ok(nodes);
+        return Ok(tree);
     }
 
     fn get_required_lookahead(&self) -> usize {

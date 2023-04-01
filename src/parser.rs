@@ -1,4 +1,5 @@
 use anyhow::{Result};
+use std::collections::{VecDeque};
 
 use crate::grammar::{ElementId, ProductionId, Grammar, ElementType};
 use crate::tokenizer::{Token};
@@ -21,8 +22,22 @@ pub struct Node {
     pub children: Vec<NodeId>,
 }
 
+pub struct Tree<'a> {
+    pub nodes: Vec<Node>,
+    pub grammar: &'a Grammar,
+}
+
+impl Tree<'_> {
+    pub fn new(grammar: &Grammar) -> Tree {
+        Tree {
+            nodes: Vec::new(),
+            grammar: grammar,
+        }
+    }
+}
+
 pub trait Parser {
-    fn parse(&self, tokens: &Vec<Token>) -> Result<Vec<Node>>;
+    fn parse(&self, tokens: &Vec<Token>) -> Result<Tree>;
     fn get_required_lookahead(&self) -> usize;
 }
 

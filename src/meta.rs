@@ -22,8 +22,9 @@ impl GrammarReader {
 
     pub fn read(&mut self, in_str: &str) -> (Tokenizer, Grammar) {
         let tokens = self.tokenizer.tokenize(in_str).unwrap();
-        let nodes = self.parser.parse(&tokens).unwrap();
-        let root = nodes.len()-1;
+        let tree = self.parser.parse(&tokens).unwrap();
+        let nodes = &tree.nodes;
+        let root = tree.nodes.len()-1;
 
         let mut symbol_table = HashMap::new();
         let mut terminals = Vec::new();

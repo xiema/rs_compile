@@ -286,8 +286,8 @@ impl ParserLR {
 }
 
 impl Parser for ParserLR {
-    fn parse(&self, tokens: &Vec<Token>) -> Result<Vec<Node>> {
-        let mut nodes: Vec<Node> = Vec::new();
+    fn parse(&self, tokens: &Vec<Token>) -> Result<Tree> {
+        let mut tree = Tree::new(&self.grammar);
 
         // Stack of past states seen by the DFA
         let mut states: Vec<usize> = Vec::new();
@@ -300,13 +300,13 @@ impl Parser for ParserLR {
         let mut input: Vec<NodeId> = Vec::new();
         // push the first token (transformed into the associated Terminal Element)
         let mut token = tokens.first().with_context(|| "Input sequence is empty.")?;
-        nodes.push(self.new_node(0, self.grammar.token_elem_map[&token.token_type], None));
-        nodes[0].token = Some(tokens[0].clone());
+        tree.nodes.push(self.new_node(0, self.grammar.token_elem_map[&token.token_type], None));
+        tree.nodes[0].token = Some(tokens[0].clone());
         input.push(0);
 
         loop {
             let next_node_id = *input.last().unwrap();
-            let next_elem_id = nodes[next_node_id].elem_id;
+            let next_elem_id = tree.nodes[next_node_id].elem_id;
             // Element is ROOT
             if next_elem_id == 0 { break Ok(()) }
 
@@ -327,7 +327,7 @@ impl Parser for ParserLR {
                     
                     if input.is_empty() {
                         token_idx += 1;
-                        let next_node_id = nodes.len();
+                        let next_node_id = tree.nodes.len();
                         token = match tokens.get(token_idx) {
                             Some(t) => t,
                             None => break Err(anyhow!("Missing tokens at {}, in shift from State {} to State {}", token_idx, cur_state_id, next_state))
@@ -336,26 +336,26 @@ impl Parser for ParserLR {
                             Some(id) => id,
                             None => break Err(anyhow!("Couldn't find Element for token: '{}'", token.text))
                         };
-                        nodes.push(self.new_node(next_node_id, *elem_id, None));
-                        nodes[next_node_id].token = Some(tokens[token_idx].clone());
+                        tree.nodes.push(self.new_node(next_node_id, *elem_id, None));
+                        tree.nodes[next_node_id].token = Some(tokens[token_idx].clone());
                         input.push(next_node_id);
                     }
 
                     // println!("[{}] SHIFT {} goto {}", cur_state_id, self.grammar.elems[next_elem_id].name, next_state);
                 },
                 ParseAction::Reduce(elem_id, prod_id) => {
-                    let next_node_id = nodes.len();
-                    nodes.push(self.new_node(next_node_id, *elem_id, None));
+                    let next_node_id = tree.nodes.len();
+                    tree.nodes.push(self.new_node(next_node_id, *elem_id, None));
 
                     let pop_count = self.grammar.elems[*elem_id].productions[*prod_id].len();
                     for _ in 0..pop_count {
                         states.pop();
                         let node_id = node_stack.pop().unwrap();
-                        nodes[node_id].parent = Some(next_node_id);
-                        nodes[next_node_id].children.push(node_id);
+                        tree.nodes[node_id].parent = Some(next_node_id);
+                        tree.nodes[next_node_id].children.push(node_id);
                     }
-                    nodes[next_node_id].children.reverse();
-                    nodes[next_node_id].prod_id = Some(*prod_id);
+                    tree.nodes[next_node_id].children.reverse();
+                    tree.nodes[next_node_id].prod_id = Some(*prod_id);
                     input.push(next_node_id);
 
                     // println!("[{}] REDUCE {}({})", cur_state_id, self.grammar.elems[*elem_id].name, pop_count);
@@ -363,21 +363,21 @@ impl Parser for ParserLR {
                 ParseAction::ShiftReduce(elem_id, prod_id) => {
                     let child_node_id = next_node_id;
 
-                    let next_node_id = nodes.len();
-                    nodes.push(self.new_node(next_node_id, *elem_id, None));
+                    let next_node_id = tree.nodes.len();
+                    tree.nodes.push(self.new_node(next_node_id, *elem_id, None));
 
-                    nodes[child_node_id].parent = Some(next_node_id);
-                    nodes[next_node_id].children.push(child_node_id);
+                    tree.nodes[child_node_id].parent = Some(next_node_id);
+                    tree.nodes[next_node_id].children.push(child_node_id);
 
                     let pop_count = self.grammar.elems[*elem_id].productions[*prod_id].len() - 1;
                     for _ in 0..pop_count {
                         states.pop();
                         let node_id = node_stack.pop().unwrap();
-                        nodes[node_id].parent = Some(next_node_id);
-                        nodes[next_node_id].children.push(node_id);
+                        tree.nodes[node_id].parent = Some(next_node_id);
+                        tree.nodes[next_node_id].children.push(node_id);
                     }
-                    nodes[next_node_id].children.reverse();
-                    nodes[next_node_id].prod_id = Some(*prod_id);
+                    tree.nodes[next_node_id].children.reverse();
+                    tree.nodes[next_node_id].prod_id = Some(*prod_id);
                     input.pop();
                     input.push(next_node_id);
 
@@ -386,7 +386,7 @@ impl Parser for ParserLR {
             }
         }.with_context(|| format!("Parse error at {}:{}", token.line_num, token.line_pos))?;
 
-        Ok(nodes)
+        Ok(tree)
     }
 
     fn get_required_lookahead(&self) -> usize {
@@ -485,8 +485,8 @@ mod tests {
         let parser = ParserLR::new(&gram);
         println!("{}", parser.grammar);
         parser.display_parse_table();
-        let nodes = parser.parse(&tokens).unwrap();
-        display_tree(nodes.len()-1, &nodes, &parser.grammar, 0);
+        let tree = parser.parse(&tokens).unwrap();
+        // display_tree(nodes.len()-1, &nodes, &parser.grammar, 0);
     }
 
     #[allow(unused_variables)]
