@@ -2,7 +2,7 @@ use std::collections::{VecDeque, HashMap};
 
 use anyhow::Context;
 use crate::grammar::{GrammarGenerator, ProductionItem};
-use crate::parser::{Node, NodeId, ParserLR, Parser};
+use crate::parser::{ParserLR, Parser};
 use crate::tokenizer::{TokenTypeId, TokenPattern};
 use crate::tokenizer::Tokenizer;
 use crate::grammar::Grammar;
@@ -23,8 +23,6 @@ impl GrammarReader {
     pub fn read(&mut self, in_str: &str) -> (Tokenizer, Grammar) {
         let tokens = self.tokenizer.tokenize(in_str).unwrap();
         let tree = self.parser.parse(&tokens).unwrap();
-        let nodes = &tree.nodes;
-        let root = tree.nodes.len()-1;
 
         let mut symbol_table = HashMap::new();
         let mut terminals = Vec::new();
@@ -38,20 +36,20 @@ impl GrammarReader {
         let mut gram_gen = GrammarGenerator::new();
 
         // Root
-        let root_sym = &nodes[get_child("Identifier", root, &nodes, &self.grammar).unwrap()];
+        let root_sym = tree.get_child("Identifier", tree.root_id).unwrap();
         let root_name = &root_sym.token.as_ref().unwrap().text;
         gram_gen.new_nonterm(&root_name);
         gram_gen.new_term("$$", -1 as TokenTypeId);
 
         // Token setup
         let mut q = VecDeque::new();
-        for node_id in iter_descendants("Rule", root, &nodes, &self.grammar) {
-            let node = &nodes[nodes[node_id].children[0]];
+        for node_id in tree.iter_descendants("Rule", tree.root_id) {
+            let node = &tree.nodes[tree.nodes[node_id].children[0]];
 
             // Pattern Rules
             if node.elem_id == elem_id_pattern_rule {
-                let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
-                let rhs = &nodes[get_child("LiteralSymbol", node_id, &nodes, &self.grammar).unwrap()];
+                let lhs = tree.get_child("Identifier", node_id).unwrap();
+                let rhs = tree.get_child("LiteralSymbol", node_id).unwrap();
                 let name = &lhs.token.as_ref().unwrap().text;
                 if !symbol_table.contains_key(name) {
                     symbol_table.insert(name.clone(), 0);
@@ -62,13 +60,13 @@ impl GrammarReader {
             }
             // Production Rules
             else if node.elem_id == elem_id_production_rule {
-                let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
+                let lhs = tree.get_child("Identifier", node_id).unwrap();
                 let name = &lhs.token.as_ref().unwrap().text;
                 if !symbol_table.contains_key(name) {
                     symbol_table.insert(name.clone(), 0);
                 }
-                for child_id in iter_descendants("LiteralSymbol", node_id, &nodes, &self.grammar) {
-                    let sym_node = &nodes[child_id];
+                for child_id in tree.iter_descendants("LiteralSymbol", node_id) {
+                    let sym_node = &tree.nodes[child_id];
                     let sym_text_full = &sym_node.token.as_ref().unwrap().text;
                     let sym_text = &sym_text_full[1..sym_text_full.len()-1];
                     if !symbol_table.contains_key(sym_text) {
@@ -111,16 +109,16 @@ impl GrammarReader {
             }
         }
 
-        for node_id in iter_descendants("ProductionRule", root, &nodes, &self.grammar) {
-            let lhs = &nodes[get_child("Identifier", node_id, &nodes, &self.grammar).unwrap()];
+        for node_id in tree.iter_descendants("ProductionRule", tree.root_id) {
+            let lhs = tree.get_child("Identifier", node_id).unwrap();
             let def_elem_name = &lhs.token.as_ref().unwrap().text;
             let def_elem_id = symbol_table[def_elem_name];
 
-            for rhs_node_id in iter_descendants("RHS", node_id, &nodes, &self.grammar) {
+            for rhs_node_id in tree.iter_descendants("RHS", node_id) {
                 let mut rhs_def = Vec::new();
                 // get symbols for this RHS
-                for sym_id in iter_descendants("Symbol", rhs_node_id, &nodes, &self.grammar) {
-                    let symbol = &nodes[nodes[sym_id].children[0]];
+                for sym_id in tree.iter_descendants("Symbol", rhs_node_id) {
+                    let symbol = &tree.nodes[tree.nodes[sym_id].children[0]];
                     let tok_text_full = &symbol.token.as_ref().unwrap().text;
 
                     // special
@@ -132,9 +130,9 @@ impl GrammarReader {
                             (&tok_text_full[1..tok_text_full.len()-1], false)
                         }
                         else { // Identifier
-                            if nodes[sym_id].children.len() > 1 {
+                            if tree.nodes[sym_id].children.len() > 1 {
                                 // Kleene
-                                if nodes[nodes[sym_id].children[1]].elem_id == elem_id_kleene {
+                                if tree.nodes[tree.nodes[sym_id].children[1]].elem_id == elem_id_kleene {
                                     (tok_text_full.as_str(), true)
                                 }
                                 else {
@@ -252,45 +250,6 @@ pub fn define_lang_lr() -> (Tokenizer, Grammar) {
     return (tok, gram);
 }
 
-fn iter_descendants(name: &str, base_node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar) -> Vec<NodeId> {
-    let mut q = VecDeque::new();
-    let mut ret = Vec::new();
-    q.push_front(base_node_id);
-
-    while !q.is_empty() {
-        let node_id = q.pop_front().unwrap();
-        if gram.elems[nodes[node_id].elem_id].name == name {
-            ret.push(node_id);
-        }
-        else {
-            for child_id in nodes[node_id].children.iter().rev() {
-                q.push_front(*child_id);
-            }
-        }
-    }
-
-    ret
-}
-
-fn get_child(name: &str, base_node_id: NodeId, nodes: &Vec<Node>, gram: &Grammar) -> Option<NodeId> {
-    let mut q = VecDeque::new();
-    q.push_front(base_node_id);
-
-    while !q.is_empty() {
-        let node_id = q.pop_front().unwrap();
-        if gram.elems[nodes[node_id].elem_id].name == name {
-            return Some(node_id);
-        }
-        else {
-            for child_id in nodes[node_id].children.iter().rev() {
-                q.push_front(*child_id);
-            }
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,9 +298,9 @@ mod tests {
         }
         assert_eq!(tokens[tokens.len()-1].token_type, -1 as TokenTypeId);
 
-        let nodes = parser.parse(&tokens).unwrap();
+        let tree = parser.parse(&tokens).unwrap();
 
-        // display_tree(0, &nodes, &gram, 0);
+        // println!("{}", tree);
     }
 
     #[allow(unused_variables)]
@@ -392,8 +351,8 @@ mod tests {
 
         // parser.display_parse_table();
 
-        let nodes = parser.parse(&tokens).unwrap();
+        let tree = parser.parse(&tokens).unwrap();
 
-        // parser::display_tree(nodes.len()-1, &nodes, &gram, 0);
+        // println!("{}", tree);
     }
 }

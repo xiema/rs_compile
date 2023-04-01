@@ -11,13 +11,13 @@ fn integ_test_ll() {
     let tokens = tok.tokenize(gram_txt.as_str()).unwrap();
     let parser = ParserLL::new(&gram);
     let tree = parser.parse(&tokens).unwrap();
-    display_tree(0, &tree.nodes, &gram, 0);
+    println!("{}", tree);
     
     let gram_txt = fs::read_to_string("tests/input/sample_grammar_lr.txt").unwrap();
     let tokens = tok.tokenize(gram_txt.as_str()).unwrap();
     let parser = ParserLL::new(&gram);
     let tree = parser.parse(&tokens).unwrap();
-    display_tree(0, &tree.nodes, &gram, 0);
+    println!("{}", tree);
 
     // parser.display_parse_table();
 }
@@ -31,13 +31,13 @@ fn integ_test_lr() {
     let tokens = tok.tokenize(gram_txt.as_str()).unwrap();
     let parser = ParserLR::new(&gram);
     let tree = parser.parse(&tokens).unwrap();
-    display_tree(tree.nodes.len()-1, &tree.nodes, &gram, 0);
+    println!("{}", tree);
 
     let gram_txt = fs::read_to_string("tests/input/sample_grammar_ll.txt").unwrap();
     let tokens = tok.tokenize(gram_txt.as_str()).unwrap();
     let parser = ParserLR::new(&gram);
     let tree = parser.parse(&tokens).unwrap();
-    display_tree(tree.nodes.len()-1, &tree.nodes, &gram, 0);
+    println!("{}", tree);
 
     // parser.display_parse_table();
 }
@@ -54,5 +54,5 @@ fn integ_test_meta() {
     let prog_txt = fs::read_to_string("tests/input/lr_sample.in").unwrap();
     let tokens = tok.tokenize(prog_txt.as_str()).unwrap();
     let tree = parser.parse(&tokens).unwrap();
-    display_tree(tree.nodes.len()-1, &tree.nodes, &gram, 0);
+    println!("{}", tree);
 }

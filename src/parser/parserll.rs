@@ -286,6 +286,8 @@ impl Parser for ParserLL {
             }
         }.with_context(|| format!("Parser error at {}:{}", token.line_num, token.line_pos))?;
 
+        tree.root_id = 0;
+
         return Ok(tree);
     }
 
@@ -406,9 +408,9 @@ mod tests {
         let (mut tokenizer, gram) = create_lang_from_lr();
         let tokens = tokenizer.tokenize(code).unwrap();
         let parser = ParserLL::new(&gram);
-        let nodes = parser.parse(&tokens).unwrap();
+        let tree = parser.parse(&tokens).unwrap();
         // println!("{}", gram);
-        // display_tree(0, &nodes, &gram, 0);
+        // println!("{}", tree);
     }
 
     #[allow(unused_variables)]
@@ -433,10 +435,10 @@ mod tests {
 
         let tokens = vec![];
         let res = parser.parse(&tokens);
-        let e = res.err().unwrap();
+        let e = res.as_ref().err().unwrap();
         println!("[DISPLAY] {:#}", e);
 
-        // display_tree(0, &res.unwrap(), &gram, 0);
+        // println!("{}", res.as_ref().unwrap());
     }
 
     #[allow(unused_variables)]
@@ -476,8 +478,8 @@ mod tests {
         let tokens = tokenizer.tokenize(code).unwrap();
         
         let parser = ParserLL::new(&gram);
-        let nodes = parser.parse(&tokens).unwrap();
+        let tree = parser.parse(&tokens).unwrap();
 
-        // display_tree(0, &nodes, &gram, 0);
+        println!("{}", tree);
     }
 }
