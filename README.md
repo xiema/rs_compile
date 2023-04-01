@@ -103,10 +103,10 @@ Generate the grammar:
 Create a parser and parse the `Token` sequence:
 
     let parser = ParserLR::new(&grammar);
-    let nodes = parser.parse(&tokens).unwrap();
+    let tree = parser.parse(&tokens).unwrap();
 
 
-The output is a vector of `Node`s of the resulting parse tree. Each `Node` has an `ElementType` (_Grammar Element_), as defined in the grammar.
+The output parse tree is a `Tree` of `Node`s. Each `Node` has an `ElementType` (_Grammar Element_), as defined in the grammar.
 
 Can handle _LL(k)_ grammars and _LR(1)_ grammars.
 
